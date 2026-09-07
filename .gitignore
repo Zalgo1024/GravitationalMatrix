@@ -43,6 +43,24 @@ backend/data/
 DEPLOY_PLAN.md
 GO_TO_MARKET_PLAN.md
 UPGRADE_PLAN.md
+LEVEL_AND_PACKAGING.md
+PROJECT_ASSESSMENT.md
+USER_SYSTEM_PLAN.md
+
+# ----- 本地备份脚本与已废弃的旧备份方案（含私有仓库路径，不进公开仓库） -----
+备份到GitHub.bat
+_废弃_旧备份方案/
 
 # ----- 引擎调试预览页（本地调试产物，不入库） -----
 /outputs/
+
+# ----- 私有备份仓库（独立 git 目录，仅本地使用，绝不进公开仓库） -----
+/.git-backup/
+/.git-backup-ignore
+_backup_setup.log
+
+# ----- 项目内回收站（2026-09-07 清理，确认无误后可整目录删除） -----
+/_trash_*/
+
+# ----- 损坏仓库留档（2026-09-07 pack 文件丢失事故，确认无遗留数据后可删） -----
+/.git_broken_*/
