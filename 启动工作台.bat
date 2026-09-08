@@ -9,7 +9,7 @@ echo   (frontend http://127.0.0.1:3000  +  backend http://127.0.0.1:8000)
 echo ============================================
 echo.
 
-REM 先停掉可能残留的旧进程，避免复用旧代码（修过代码后必须重启才生效）
+REM Stop leftover processes first so stale code is never reused (edit code -> double-click again)
 echo [1/2] Cleaning up any previous instances...
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\local-workbench.ps1" -Action stop >nul 2>&1
 
