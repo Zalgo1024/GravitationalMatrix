@@ -178,6 +178,19 @@ function Invoke-FrontendBuild {
     $tsconfigSnapshot = [System.IO.File]::ReadAllBytes($tsconfigPath)
     $tsconfigTimestamp = (Get-Item -LiteralPath $tsconfigPath).LastWriteTimeUtc
     if ($DistDir -ne ".next") { Remove-SafeBuildDirectory -Path $targetBuildDir }
+    # Staging 构建前，用上次生产构建的 webpack 缓存播种（robocopy 几秒），
+    # 否则 staging 每次从零编译（冷构建 1-2 分钟 → 增量构建约十几秒）。
+    if ($DistDir -ne ".next") {
+        $sourceCache = Join-Path $frontendDir ".next\cache"
+        if (Test-Path -LiteralPath $sourceCache -PathType Container) {
+            $targetCache = Join-Path $targetBuildDir "cache"
+            New-Item -ItemType Directory -Path $targetCache -Force | Out-Null
+            robocopy $sourceCache $targetCache /E /NFL /NDL /NJH /NJS /NP > $null
+            if ($LASTEXITCODE -ge 8) {
+                Write-Step "Webpack cache seeding failed (robocopy exit $LASTEXITCODE); building cold instead."
+            }
+        }
+    }
     try {
         & $NpmPath --prefix $frontendDir run build 2>&1 | Tee-Object -FilePath (Join-Path $runtimeDir "frontend-build.log")
         if ($LASTEXITCODE -ne 0) { throw "Frontend production build failed. See .runtime\frontend-build.log" }
@@ -338,18 +351,24 @@ function Invoke-Start {
         $frontendAction = "start"
     }
 
+    # 后端先行：后端 3-5 秒就能就绪，前端构建要 1-2 分钟——
+    # 先把后端拉起来，构建期间 API 已可用，总启动时间 ≈ max(后端, 前端) 而不是两者之和。
     $python = $null
-    if ($backend.Status -eq "stopped") { $python = Resolve-Python }
+    $startedBackend = 0
+    $startedFrontend = 0
+    if ($backend.Status -eq "stopped") {
+        $python = Resolve-Python
+        $startedBackend = Start-BackendService -PythonPath $python
+    }
     if ($frontendAction -eq "start") {
         if ($null -eq $node) { $node = Resolve-Executable -Candidates @("node.exe", "node") -Label "Node.js" }
         if ($null -eq $npm) { $npm = Resolve-Executable -Candidates @("npm.cmd") -Label "npm" }
         if (-not $stagedUpgrade) { Invoke-FrontendBuild -NpmPath $npm }
     }
 
-    $startedBackend = 0
-    $startedFrontend = 0
     try {
-        if ($backend.Status -eq "stopped") { $startedBackend = Start-BackendService -PythonPath $python } else { Write-Step "Reusing healthy backend PID $($backend.ProcessId)." }
+        if ($startedBackend -gt 0) { Write-Step "Backend started first (PID $startedBackend); frontend build/start continues while API warms up." }
+        else { Write-Step "Reusing healthy backend PID $($backend.ProcessId)." }
         if ($frontendAction -eq "start") { $startedFrontend = Start-FrontendService -NodePath $node } else { Write-Step "Reusing healthy frontend PID $($frontend.ProcessId)." }
 
         $backendHealthy = $false
