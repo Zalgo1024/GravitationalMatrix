@@ -6,10 +6,12 @@
 """
 import logging
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 
+from app.auth import get_current_user
 from app.db import SessionLocal
 from app.models import Task
+from app.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -24,10 +26,13 @@ def list_tasks(
     project_id: str | None = Query(None, description="按项目过滤"),
     status: str | None = Query(None, description="按状态过滤 queued|generating|done|error"),
     limit: int = Query(50, ge=1, le=200, description="返回条数上限（默认 50）"),
+    current: dict = Depends(get_current_user),
 ):
     """返回 tasks 表数据映射为 TaskDTO 数组（created_at desc）。"""
     with SessionLocal() as db:
         q = db.query(Task)
+        if settings.public_mode:
+            q = q.filter(Task.owner_id == current["id"])
         if project_id:
             q = q.filter(Task.project_id == project_id)
         if status:

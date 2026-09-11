@@ -10,10 +10,11 @@ import logging
 import os
 import uuid
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from app.auth import get_current_user, task_owned
 from app.db import SessionLocal
 from app.generator import ReportGenerator
 from app.models import Project, ReportVersion, Task
@@ -69,14 +70,14 @@ def _current_version(db, task_id: str) -> ReportVersion | None:
 
 
 @router.get("/api/reports/{task_id}")
-def get_report_versions(task_id: str):
+def get_report_versions(task_id: str, current: dict = Depends(get_current_user)):
     """报告版本列表。首次访问自动播种 original 版本。返回当前版本 + versions 数组。"""
     with SessionLocal() as db:
-        t = db.get(Task, task_id)
+        t = task_owned(db, task_id, current)
         if not t:
             return {"status": "not_found"}
         _ensure_original_version(db, t)
-        current = _current_version(db, task_id)
+        cur = _current_version(db, task_id)
         rows = (
             db.query(ReportVersion)
             .filter(ReportVersion.task_id == task_id)
@@ -86,16 +87,16 @@ def get_report_versions(task_id: str):
         return {
             "task_id": task_id,
             "title": t.title,
-            "current_version_id": current.id if current else None,
-            "versions": [_version_meta(r, current.id if current else None) for r in rows],
+            "current_version_id": cur.id if cur else None,
+            "versions": [_version_meta(r, cur.id if cur else None) for r in rows],
         }
 
 
 @router.get("/api/reports/{task_id}/research")
-def get_report_research(task_id: str, version_id: str | None = None):
+def get_report_research(task_id: str, version_id: str | None = None, current: dict = Depends(get_current_user)):
     """Return the evidence-to-judgment snapshot bound to one report version."""
     with SessionLocal() as db:
-        task = db.get(Task, task_id)
+        task = task_owned(db, task_id, current)
         if not task:
             return {"status": "not_found"}
         _ensure_original_version(db, task)
@@ -123,10 +124,11 @@ def get_report_changes(
     task_id: str,
     from_version_id: str | None = None,
     to_version_id: str | None = None,
+    current: dict = Depends(get_current_user),
 ):
     """Compare two version-bound research snapshots without asking the LLM."""
     with SessionLocal() as db:
-        task = db.get(Task, task_id)
+        task = task_owned(db, task_id, current)
         if not task:
             return {"status": "not_found"}
         _ensure_original_version(db, task)
@@ -166,14 +168,14 @@ class SaveVersionRequest(BaseModel):
 
 
 @router.post("/api/reports/{task_id}/versions")
-def save_report_version(task_id: str, req: SaveVersionRequest):
+def save_report_version(task_id: str, req: SaveVersionRequest, current: dict = Depends(get_current_user)):
     """保存一次人工修订版（kind='revised'，edited_by='human'）。会自动先确保 original 版本存在。
 
     新版本 version_no = 当前最大 + 1；保存后 is_current=1（其余置 0）。
     editor 取当前默认归属人（本地单用户模式；多用户时从会话获取，见 settings.default_owner_name）。
     """
     with SessionLocal() as db:
-        t = db.get(Task, task_id)
+        t = task_owned(db, task_id, current)
         if not t:
             return {"status": "not_found"}
         _ensure_original_version(db, t)
@@ -203,7 +205,7 @@ class EnrichmentRequest(BaseModel):
 
 
 @router.post("/api/reports/{task_id}/enrichments", status_code=202)
-def create_enrichment_job(task_id: str, req: EnrichmentRequest):
+def create_enrichment_job(task_id: str, req: EnrichmentRequest, current: dict = Depends(get_current_user)):
     """Queue an evidence-enrichment job bound to the report's current version."""
     if not req.material_ids and not req.web and not req.source_urls:
         return JSONResponse(
@@ -215,7 +217,7 @@ def create_enrichment_job(task_id: str, req: EnrichmentRequest):
         )
 
     with SessionLocal() as db:
-        target = db.get(Task, task_id)
+        target = task_owned(db, task_id, current)
         if target is None:
             return JSONResponse(
                 {"error": "task_not_found", "message": "报告不存在。"},
@@ -227,8 +229,8 @@ def create_enrichment_job(task_id: str, req: EnrichmentRequest):
                 status_code=409,
             )
         _ensure_original_version(db, target)
-        current = _current_version(db, task_id)
-        if current is None:
+        cur = _current_version(db, task_id)
+        if cur is None:
             return JSONResponse(
                 {"error": "version_not_found", "message": "当前报告版本不存在。"},
                 status_code=404,
@@ -266,20 +268,20 @@ def create_enrichment_job(task_id: str, req: EnrichmentRequest):
             project_id=target.project_id,
             operation="enrichment",
             target_task_id=target.id,
-            base_version_id=current.id,
+            base_version_id=cur.id,
         )
         db.add(job)
         db.commit()
         return {
             "job_task_id": job_id,
             "target_task_id": target.id,
-            "base_version_id": current.id,
+            "base_version_id": cur.id,
             "status": "queued",
         }
 
 
 @router.post("/api/reports/{task_id}/revise")
-def revise_report(task_id: str, req: ReviseRequest):
+def revise_report(task_id: str, req: ReviseRequest, current: dict = Depends(get_current_user)):
     """T13 AI 再改：基于当前版本全文 + 指令，调用 generator.revise 生成新 Markdown，
     新增版本（edited_by='ai'，is_current=1，旧版置 0），并即时重渲产物到
     backend/generated/{task_id}_v{n}/。
@@ -288,14 +290,14 @@ def revise_report(task_id: str, req: ReviseRequest):
           word, pdf_available}
     """
     with SessionLocal() as db:
-        t = db.get(Task, task_id)
+        t = task_owned(db, task_id, current)
         if not t:
             return {"status": "not_found"}
         _ensure_original_version(db, t)
-        current = _current_version(db, task_id)
-        if not current:
+        cur = _current_version(db, task_id)
+        if not cur:
             return {"error": "version_not_found", "message": "当前版本不存在"}
-        prev_md = current.content_markdown
+        prev_md = cur.content_markdown
         title = t.title
         analysis_type = t.analysis_type
         task_llm_config = t.llm_config
@@ -326,11 +328,10 @@ def revise_report(task_id: str, req: ReviseRequest):
         return {"error": "revise_failed", "message": f"AI 再改失败：{e}"}
 
     with SessionLocal() as db:
-        t = db.get(Task, task_id)
+        t = task_owned(db, task_id, current)
         if t is None:
             return {"error": "task_gone", "message": "任务已不存在"}
-        v = create_report_version(
-            db,
+        v = create_report_version(            db,
             task_id=task_id,
             content_markdown=new_md,
             content_html=None,
@@ -352,11 +353,11 @@ def revise_report(task_id: str, req: ReviseRequest):
         render_warning = f"重渲失败：{e}"
         exp = {"word": None, "pdf": None, "pdf_available": False}
     with SessionLocal() as db:
-        t = db.get(Task, task_id)
+        t = task_owned(db, task_id, current)
         if t is None:
             return {"error": "task_gone", "message": "任务已不存在"}
-        current = _current_version(db, task_id)
-        if current is not None and current.id == version_id:
+        cur = _current_version(db, task_id)
+        if cur is not None and cur.id == version_id:
             # 只有仍为当前版本时才更新默认下载产物，避免较慢的并发渲染覆盖新版本。
             safe = {k: val for k, val in (t.result or {}).items() if k != "folder"}
             safe.update(
@@ -366,8 +367,8 @@ def revise_report(task_id: str, req: ReviseRequest):
                     "word": exp.get("word"),
                     "pdf": exp.get("pdf"),
                     "pdf_available": exp.get("pdf_available", False),
-                    "research": current.research_snapshot,
-                    "research_status": current.research_status or "unavailable",
+                    "research": cur.research_snapshot,
+                    "research_status": cur.research_status or "unavailable",
                 }
             )
             t.result = safe
@@ -389,7 +390,7 @@ def revise_report(task_id: str, req: ReviseRequest):
 
 
 @router.post("/api/versions/{vid}/rollback")
-def rollback_version(vid: str):
+def rollback_version(vid: str, current: dict = Depends(get_current_user)):
     """T13 回滚：把指定版本设为 is_current=1（其余置 0���，并即时重渲产物到
     backend/generated/{task_id}_v{n}/。
 
@@ -400,7 +401,7 @@ def rollback_version(vid: str):
         if not v:
             return {"error": "version_not_found", "message": "版本不存在"}
         task_id = v.task_id
-        t = db.get(Task, task_id)
+        t = task_owned(db, task_id, current)
         if not t:
             return {"error": "task_not_found", "message": "任务不存在"}
         title = t.title
@@ -422,7 +423,7 @@ def rollback_version(vid: str):
         v = set_current_version(db, vid)
         if not v:
             return {"error": "version_not_found", "message": "版本不存在"}
-        t = db.get(Task, task_id)
+        t = task_owned(db, task_id, current)
         safe = {k: val for k, val in (t.result or {}).items() if k != "folder"}
         safe.update(
             {
@@ -450,10 +451,10 @@ def rollback_version(vid: str):
 
 
 @router.get("/api/reports/{task_id}/versions/{vid}")
-def get_report_version(task_id: str, vid: str):
+def get_report_version(task_id: str, vid: str, current: dict = Depends(get_current_user)):
     """取单个版本的完整内容（Markdown + HTML）。"""
     with SessionLocal() as db:
-        t = db.get(Task, task_id)
+        t = task_owned(db, task_id, current)
         if not t:
             return {"status": "not_found"}
         v = (
@@ -481,7 +482,7 @@ def get_report_version(task_id: str, vid: str):
 
 
 @router.delete("/api/reports/{task_id}")
-def delete_report(task_id: str):
+def delete_report(task_id: str, current: dict = Depends(get_current_user)):
     """删除整篇报告（Task）及其所有版本、产物文件，并清理孤立的自动项目。
 
     - 显式删除 ReportVersion（不依赖数据库级 FK cascade，避免残留孤儿行）；
@@ -489,7 +490,7 @@ def delete_report(task_id: str):
     - 若该报告归属「自动项目」(id 以 auto_ 开头) 且是该项目唯一报告，则一并删除孤儿项目。
     """
     with SessionLocal() as db:
-        t = db.get(Task, task_id)
+        t = task_owned(db, task_id, current)
         if not t:
             return {"status": "not_found"}
 

@@ -6,11 +6,14 @@
 路由已拆分为 app/routers/ 下的模块化路由（analyze / settings / projects /
 reports / materials / system）。本文件只负责装配 app、CORS、startup 与统一异常处理。
 
-安全说明：本服务仅供本地前端联调，仅监听 127.0.0.1，不对外开放；无公网鉴权。
-认证采用「本地单用户模式」：前端用本地身份标识进入工作台（数据仅存本机及本地后端），
-会员系统（注册/多用户隔离）按用户要求仅预留、未启用（见 app/models.py）。
+安全说明：本服务仅监听 127.0.0.1，不直接对外暴露。
+认证为双模式（PUBLIC_MODE 开关）：
+- =0 本地单机：get_current_user 返回虚拟身份，界面无登录元素（零回归）；
+- =1 公网/本地启用：JWT 会话 + 封禁校验 + owner_id 数据隔离，
+  登录/注册/邮箱验证/管理后台由 app/routers/auth.py 提供（见 app/models.py）。
 """
 import logging
+import os
 
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
@@ -19,18 +22,22 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app import queue as taskq
-from app.db import init_db, seed_projects
-from app.routers import analyze, benchmarks, cases, materials, monitoring, projects, reports, search, settings, system, tasks
+from app.db import init_db, seed_admin_user, seed_projects
+from app.routers import admin_ops, analyze, auth, benchmarks, cases, materials, monitoring, projects, reports, search, settings, system, tasks
+# 注意：上面 routers 里的 `settings` 是路由模块，此处配置实例必须另起别名，
+# 否则会覆盖 `settings.router` 导致装配失败。
+from app.settings import settings as app_settings
 
 logger = logging.getLogger("app")
 
 app = FastAPI(title="三元结构分析平台 - 后端（内部使用）")
 
-# 仅允许本地前端跨域，不外放。localhost 与 127.0.0.1 都放行
-# （预览面板可能以 127.0.0.1:3000 访问）。
+# 仅允许本机前端跨域，不外放。来源由 CORS_ORIGINS 配置（A1），
+# 默认放行工作台 3000 + 独立运营后台 3001，localhost 与 127.0.0.1 均含。
+# 因需带 cookie（credentials），来源必须是精确值，不能用通配符。
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=app_settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -45,6 +52,13 @@ app.add_middleware(
 
 @app.exception_handler(StarletteHTTPException)
 async def _http_exception_handler(request, exc: StarletteHTTPException):
+    # dict detail（本项目的惯例：{"status": ..., "message": ...}）拆开展开，
+    # 避免 str(dict) 把错误消息变成 Python repr 垃圾
+    if isinstance(exc.detail, dict):
+        detail = dict(exc.detail)
+        status_code = detail.pop("status", "http_error")
+        message = detail.pop("message", "")
+        return JSONResponse(status_code=exc.status_code, content={"error": status_code, "message": message, **detail})
     return JSONResponse(
         status_code=exc.status_code,
         content={"error": "http_error", "message": str(exc.detail)},
@@ -70,8 +84,30 @@ async def _unhandled_exception_handler(request, exc: Exception):
 
 # ============================ 路由装配 ============================
 
+# —— 管理端路由门控（A2/S5）——
+# 公开部署的进程**不注册任何 /api/admin/* 路由**：管理面与用户面在路由层彻底分开，
+# 避免「一个中间件漏挂 / 一个路由 bug」就把管理端点暴露给未登录访客。
+# 取值（环境变量 ADMIN_API_ENABLED）：
+#   "1"/true  → 强制开启（你自己的私有实例在 backend/.env 里显式设 1）
+#   "0"/false → 强制关闭（对外发布建议显式设 0）
+#   未设置    → 自动：本地单机(PUBLIC_MODE=0) 开启；公网(PUBLIC_MODE=1) 关闭
+_raw_admin_flag = os.environ.get("ADMIN_API_ENABLED", "").strip().lower()
+if _raw_admin_flag in {"1", "true", "yes", "on"}:
+    ADMIN_API_ENABLED = True
+elif _raw_admin_flag in {"0", "false", "no", "off"}:
+    ADMIN_API_ENABLED = False
+else:
+    ADMIN_API_ENABLED = not app_settings.public_mode
+
 app.include_router(system.router)
 app.include_router(settings.router)
+app.include_router(auth.router)  # 用户认证：无论何种模式都注册
+if ADMIN_API_ENABLED:
+    app.include_router(auth.admin_router)
+    app.include_router(admin_ops.admin_router)
+else:
+    logger.info("[main] 管理端路由已关闭：本进程不注册任何 /api/admin/* 端点")
+
 app.include_router(analyze.router)
 app.include_router(projects.router)
 app.include_router(reports.router)
@@ -85,9 +121,21 @@ app.include_router(benchmarks.router)
 
 @app.on_event("startup")
 async def _startup() -> None:
-    # 1) 建表  2) 种子项目  3) 恢复中断任务  4) 启动工人池
+    # 1) 建表  2) 种子项目  3) admin 账号 + 存量归属回填  4) 恢复中断任务  5) 启动工人池
+    logger.info(
+        "[main] 启动：public_mode=%s admin_api=%s smtp=%s",
+        app_settings.public_mode,
+        ADMIN_API_ENABLED,
+        app_settings.smtp_enabled,
+    )
+    if app_settings.public_mode and ADMIN_API_ENABLED:
+        logger.warning(
+            "[main] 公网模式下仍开启了管理端路由（/api/admin/*）。"
+            "若这是对外发布的进程，请设置 ADMIN_API_ENABLED=0；仅在你自己的私有实例上保留开启。"
+        )
     init_db()
     seed_projects()
+    seed_admin_user()
     taskq.recover_interrupted()
     taskq.start_workers()
     from app.monitoring import start_monitor_scheduler

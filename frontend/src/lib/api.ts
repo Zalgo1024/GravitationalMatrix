@@ -23,7 +23,7 @@ export async function apiRequest<T = unknown>(path: string, options: RequestInit
   const { workspaceId: _workspaceId, ...requestOptions } = options;
   const headers = new Headers(requestOptions.headers);
   if (requestOptions.body && !(requestOptions.body instanceof FormData) && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
-  const response = await fetch(`${API_BASE}${path}`, { ...requestOptions, headers });
+  const response = await fetch(`${API_BASE}${path}`, { ...requestOptions, headers, credentials: "include" });
   if (!response.ok) {
     let payload: unknown = {};
     try { payload = await response.json(); } catch { /* empty response */ }

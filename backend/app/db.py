@@ -156,9 +156,25 @@ def init_db() -> None:
             ("source", "VARCHAR(500)"),
             ("tags", "VARCHAR(500)"),
             ("warnings", "JSON"),
+            ("owner_id", "VARCHAR(32) REFERENCES users(id)"),
         ):
             if col not in mcols:
                 alters.append(f"ALTER TABLE materials ADD COLUMN {col} {ddl}")
+        # 用户系统 Phase 0：users 表补 role / is_banned / last_seen_at（旧库可能缺）
+        ucols = {c["name"] for c in inspect(engine).get_columns("users")}
+        for col, ddl in (
+            ("role", "VARCHAR(16) DEFAULT 'user'"),
+            ("is_banned", "INTEGER DEFAULT 0"),
+            ("last_seen_at", "DATETIME"),
+            # 邮箱验证（Phase 1）
+            ("email_verified", "INTEGER DEFAULT 0"),
+            ("verification_code", "VARCHAR(8)"),
+            ("verification_code_expires", "DATETIME"),
+            # 账户恢复流：会话失效锚点（改密/重置后旧 JWT 失效）
+            ("token_valid_after", "DATETIME"),
+        ):
+            if col not in ucols:
+                alters.append(f"ALTER TABLE users ADD COLUMN {col} {ddl}")
         for sql in alters:
             conn.execute(text(sql))
         if alters:
@@ -195,6 +211,57 @@ def init_db() -> None:
             "ON report_versions (task_id) WHERE is_current = 1"
         ))
         conn.commit()
+
+
+def seed_admin_user() -> str:
+    """确保 admin 用户存在（用户系统 Phase 0）。
+
+    - 本地单机模式：创建/复用 id='workbench'（settings.default_owner_id）的归属账号，
+      password 为空串哈希（本地模式不参与登录）；
+    - 公共模式：若 admin 尚无账号，创建初始管理员（密码取 ADMIN_INITIAL_PASSWORD 环境变量，
+      未设置则生成随机密码打印到日志一次）。
+
+    返回 admin 的 user id。"""
+    import logging
+    import secrets
+
+    from app.auth import hash_password
+    from app.models import User
+    from app.settings import settings
+
+    log = logging.getLogger("app")
+    with SessionLocal() as db:
+        admin = db.get(User, settings.default_owner_id)
+        if admin is None:
+            raw = os.environ.get("ADMIN_INITIAL_PASSWORD", "").strip()
+            if not raw:
+                raw = secrets.token_urlsafe(12)
+                log.warning(
+                    "[auth] ADMIN_INITIAL_PASSWORD 未设置，已生成随机管理员密码（仅本次打印）：\n  %s",
+                    raw,
+                )
+            admin = User(
+                id=settings.default_owner_id,
+                email=os.environ.get("ADMIN_EMAIL", "admin@local"),
+                display_name=settings.default_owner_name,
+                hashed_password=hash_password(raw),
+                role="admin",
+                is_banned=0,
+                email_verified=1,  # 初始管理员不做邮箱验证（本地可能没配 SMTP）
+            )
+            db.add(admin)
+            db.commit()
+            log.info("[auth] 已创建管理员账号 %s（%s）", admin.email, admin.id)
+        # 存量数据归属迁移：owner_id 为空的行挂到 admin
+        from sqlalchemy import text
+
+        for table in ("tasks", "projects", "materials"):
+            db.execute(
+                text(f"UPDATE {table} SET owner_id = :aid WHERE owner_id IS NULL"),
+                {"aid": settings.default_owner_id},
+            )
+        db.commit()
+        return settings.default_owner_id
 
 
 def seed_projects() -> None:

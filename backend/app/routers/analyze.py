@@ -5,20 +5,79 @@ import re
 import uuid
 import zipfile
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
+from app.auth import get_current_user, rate_limiter, task_owned, user_from_ws_cookies
 from app.db import SessionLocal
 from app import queue as taskq
 from app import rule_engine
 from app.generation_routing import GenerationRouteError, decide_generation_route
 from app.llm_settings_store import resolve_config
 from app.models import ReportVersion, Task, _now
+from app.settings import settings
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+# ---------------------------------------------------------------------------
+# 应用层 DoS / 滥用防护（S1 限流 + S2 用户配额 + S3 全局闸门）
+# 仅 PUBLIC_MODE=1（公网）生效；本地模式不设闸，保证「本地零回归」。
+# ---------------------------------------------------------------------------
+_ACTIVE_STATUS = ("queued", "generating")   # 占用 worker 的任务状态
+_RATE_LIMIT, _RATE_WINDOW = 12, 60          # S1 每用户 60s 最多提交 12 个任务
+_MAX_USER_ACTIVE = 5                        # S2 每用户同时 queued/generating ≤ 5
+_MAX_GLOBAL_QUEUE = 200                     # S3 全局排队上限
+
+
+def _guard_enqueue(db, uid: str) -> None:
+    """提交/重试前调用：公网下检查用户并发配额 + 全局排队水位，超限抛 429。
+
+    本地模式（settings.public_mode=False）直接放行，不干扰本机调试。
+    纯内存限流不跨进程共享；配合 worker=1 的单进程部署足够（见部署说明）。
+    """
+    if not settings.public_mode:
+        return
+    uid_active = (
+        db.query(Task)
+        .filter(Task.owner_id == uid, Task.status.in_(_ACTIVE_STATUS))
+        .count()
+    )
+    if uid_active >= _MAX_USER_ACTIVE:
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "status": "rate_limited",
+                "message": f"您同时进行的任务已达上限（{_MAX_USER_ACTIVE} 个），请等待完成后再提交",
+            },
+        )
+    global_queued = db.query(Task).filter(Task.status == "queued").count()
+    if global_queued >= _MAX_GLOBAL_QUEUE:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "status": "queue_full",
+                "message": "系统当前繁忙（队列已满），请稍后再试",
+            },
+        )
+
+
+def _check_rate_limit(uid: str, ip: str) -> None:
+    """S1 提交频率限流：公网下每用户每 IP 60s 内 ≤ 阈值，超限抛 429。"""
+    if not settings.public_mode:
+        return
+    key = f"analyze:{uid}:{ip}"
+    if not rate_limiter.allow(key, limit=_RATE_LIMIT, window_sec=_RATE_WINDOW):
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "status": "rate_limited",
+                "message": "提交过于频繁，请稍后再试",
+            },
+        )
 
 
 class AnalyzeRequest(BaseModel):
@@ -47,7 +106,14 @@ def llm_is_available(llm_config: dict | None = None) -> bool:
 
 
 @router.post("/api/analyze")
-async def analyze(req: AnalyzeRequest):
+async def analyze(
+    req: AnalyzeRequest,
+    request: Request,
+    current: dict = Depends(get_current_user),
+):
+    # S1 提交频率限流（公网有效；本地放行）
+    _ip = request.client.host if request.client else "unknown"
+    _check_rate_limit(str(current.get("id")), _ip)
     requested_engine = req.requested_engine or req.mode or "auto"
     try:
         decision = decide_generation_route(
@@ -84,6 +150,8 @@ async def analyze(req: AnalyzeRequest):
             )
     task_id = uuid.uuid4().hex
     with SessionLocal() as db:
+        # S2 用户并发配额 + S3 全局排队闸门（公网有效；本地放行）
+        _guard_enqueue(db, str(current.get("id")))
         db.add(
             Task(
                 id=task_id,
@@ -91,6 +159,7 @@ async def analyze(req: AnalyzeRequest):
                 input_text=req.input_text,
                 analysis_type=req.analysis_type,
                 project_id=req.project_id,
+                owner_id=current["id"],
                 mode=decision.selected_engine,
                 input_mode=decision.input_mode,
                 requested_engine=decision.requested_engine,
@@ -109,9 +178,9 @@ async def analyze(req: AnalyzeRequest):
 
 
 @router.get("/api/analyze/{task_id}")
-def get_result(task_id: str):
+def get_result(task_id: str, current: dict = Depends(get_current_user)):
     with SessionLocal() as db:
-        t = db.get(Task, task_id)
+        t = task_owned(db, task_id, current)
         if not t:
             return {"status": "not_found"}
         data = (
@@ -141,7 +210,11 @@ def get_result(task_id: str):
 
 
 @router.post("/api/analyze/{task_id}/retry")
-def retry_task(task_id: str):
+def retry_task(
+    task_id: str,
+    request: Request,
+    current: dict = Depends(get_current_user),
+):
     """为失败/成功的任务创建一条新的重试任务（保留原任务历史，不覆盖）。
 
     - 仅当原任务存在时允许；
@@ -150,13 +223,18 @@ def retry_task(task_id: str):
     - 立即入队（status='queued'），由工人池认领。
     返回新任务 id。
     """
+    # S1 提交频率限流（公网有效；本地放行）
+    _rip = request.client.host if request.client else "unknown"
+    _check_rate_limit(str(current.get("id")), _rip)
     with SessionLocal() as db:
-        t = db.get(Task, task_id)
+        t = task_owned(db, task_id, current)
         if not t:
             return {"status": "not_found"}
         # 互斥：原任务仍在排队/执行时拒绝重复重试，避免生成多份重复副本互相覆盖
         if t.status in ("queued", "generating"):
             return {"status": "busy", "message": "任务仍在执行中，请等待完成后再重试"}
+        # S2 用户并发配额 + S3 全局排队闸门（重试同样入队，需一并约束）
+        _guard_enqueue(db, str(current.get("id")))
         new_id = uuid.uuid4().hex
         new_task = Task(
             id=new_id,
@@ -184,10 +262,10 @@ def retry_task(task_id: str):
 
 
 @router.get("/api/analyze/{task_id}/poll")
-def poll_task(task_id: str):
+def poll_task(task_id: str, current: dict = Depends(get_current_user)):
     """轮询快照（WS 断开后的进度恢复用）。返回带服务端时间戳的权威状态。"""
     with SessionLocal() as db:
-        t = db.get(Task, task_id)
+        t = task_owned(db, task_id, current)
         if not t:
             return {"status": "not_found"}
         data = (
@@ -228,10 +306,15 @@ def poll_task(task_id: str):
 @router.websocket("/ws/progress/{task_id}")
 async def ws_progress(task_id: str, ws: WebSocket):
     await ws.accept()
+    ws_user = user_from_ws_cookies(dict(ws.cookies))
+    if ws_user is None:
+        await ws.send_json({"status": "unauthorized"})
+        await ws.close()
+        return
     # 先订阅，再以数据库快照为权威当前状态发送（避免漏掉订阅前已发出的进度）
     q = taskq.subscribe(task_id)
     with SessionLocal() as db:
-        t = db.get(Task, task_id)
+        t = task_owned(db, task_id, current)
         if not t:
             await ws.send_json({"status": "not_found"})
             taskq.unsubscribe(task_id, q)
@@ -265,11 +348,11 @@ async def ws_progress(task_id: str, ws: WebSocket):
 
 
 @router.get("/api/download/{task_id}")
-def download(task_id: str, kind: str = "word", version: str | None = None):
+def download(task_id: str, kind: str = "word", version: str | None = None, current: dict = Depends(get_current_user)):
     from app.settings import settings
 
     with SessionLocal() as db:
-        t = db.get(Task, task_id)
+        t = task_owned(db, task_id, current)
         if not t:
             return {"error": "not_found"}
         # PPT：用（指定/最新）版本 Markdown 即时生成演示稿

@@ -4,11 +4,13 @@ import logging
 import os
 import uuid
 
-from fastapi import APIRouter, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, Form, UploadFile
 from pydantic import BaseModel
 
+from app.auth import get_current_user
 from app.db import SessionLocal
 from app.models import Material
+from app.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -127,12 +129,13 @@ def _material_full(m: Material) -> dict:
 
 
 @router.post("/api/materials")
-def create_material(req: MaterialCreate):
+def create_material(req: MaterialCreate, current: dict = Depends(get_current_user)):
     """手动粘贴长文本创建素材。可带 source（来源出处）与 tags（标签）。"""
     text = req.content_text or ""
     m = Material(
         id=uuid.uuid4().hex,
         project_id=req.project_id or None,
+        owner_id=current["id"],
         title=(req.title or "未命名素材")[:200],
         content_text=text,
         source_type=req.source_type or "paste",
@@ -154,6 +157,7 @@ async def upload_material(
     title: str = Form(None),
     source: str = Form(None),
     tags: str = Form(None),
+    current: dict = Depends(get_current_user),
 ):
     """上传文件（.txt/.md/.docx/.pdf），按扩展名解析为纯文本。
 
@@ -164,6 +168,7 @@ async def upload_material(
     m = Material(
         id=uuid.uuid4().hex,
         project_id=project_id or None,
+        owner_id=current["id"],
         title=(title or file.filename or "未命名素材")[:200],
         content_text=text,
         source_type=st,
@@ -181,10 +186,12 @@ async def upload_material(
 
 
 @router.get("/api/materials")
-def list_materials(project_id: str | None = None, q: str | None = None):
+def list_materials(project_id: str | None = None, q: str | None = None, current: dict = Depends(get_current_user)):
     """素材列表：支持按项目过滤；q 关键词搜索（标题/正文/来源/标签）。"""
     with SessionLocal() as db:
         query = db.query(Material)
+        if settings.public_mode:
+            query = query.filter(Material.owner_id == current["id"])
         if project_id:
             query = query.filter(Material.project_id == project_id)
         if q and q.strip():
@@ -200,7 +207,7 @@ def list_materials(project_id: str | None = None, q: str | None = None):
 
 
 @router.get("/api/materials/stats")
-def materials_stats(project_id: str | None = None):
+def materials_stats(project_id: str | None = None, current: dict = Depends(get_current_user)):
     """材料来源统计（数据页「材料来源统计」用，基于真实材料账本聚合）。
 
     - total：材料总数
@@ -211,6 +218,8 @@ def materials_stats(project_id: str | None = None):
     """
     with SessionLocal() as db:
         query = db.query(Material)
+        if settings.public_mode:
+            query = query.filter(Material.owner_id == current["id"])
         if project_id:
             query = query.filter(Material.project_id == project_id)
         rows = query.all()
@@ -239,19 +248,23 @@ def materials_stats(project_id: str | None = None):
 
 
 @router.get("/api/materials/{mid}")
-def get_material(mid: str):
+def get_material(mid: str, current: dict = Depends(get_current_user)):
     with SessionLocal() as db:
         m = db.get(Material, mid)
         if not m:
+            return {"error": "not_found"}
+        if settings.public_mode and m.owner_id != current["id"]:
             return {"error": "not_found"}
         return _material_full(m)
 
 
 @router.delete("/api/materials/{mid}")
-def delete_material(mid: str):
+def delete_material(mid: str, current: dict = Depends(get_current_user)):
     with SessionLocal() as db:
         m = db.get(Material, mid)
         if not m:
+            return {"error": "not_found"}
+        if settings.public_mode and m.owner_id != current["id"]:
             return {"error": "not_found"}
         db.delete(m)
         db.commit()

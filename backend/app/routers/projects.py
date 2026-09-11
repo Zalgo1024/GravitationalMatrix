@@ -4,10 +4,11 @@ import os
 import shutil
 import uuid
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from app.auth import get_current_user, project_owned
 from app.db import SessionLocal
 from app.models import Material, Project, ReportVersion, Task, _now
 from app.routers.materials import _material_meta
@@ -62,7 +63,7 @@ class ProjectUpdate(BaseModel):
 
 
 @router.post("/api/projects")
-def create_project(req: ProjectCreate):
+def create_project(req: ProjectCreate, current: dict = Depends(get_current_user)):
     pid = (req.id or uuid.uuid4().hex)[:64]
     with SessionLocal() as db:
         if db.get(Project, pid):
@@ -76,9 +77,13 @@ def create_project(req: ProjectCreate):
             interests=req.interests,
             chapters=req.chapters,
             progress=req.progress,
-            # 默认归属人取自可配置项（settings.default_owner_*），避免硬编码
+            # 默认归属人取自可配置项（settings.default_owner_*），避免硬编码；
+            # 公共模式下归属强制为当前登录用户（防止伪造 owner_id 越权归属）
             owner_name=req.owner_name or settings.default_owner_name,
-            owner_id=req.owner_id or settings.default_owner_id,
+            owner_id=(
+                current["id"] if settings.public_mode
+                else (req.owner_id or settings.default_owner_id)
+            ),
             is_archived=0,
         )
         db.add(p)
@@ -87,9 +92,9 @@ def create_project(req: ProjectCreate):
 
 
 @router.put("/api/projects/{pid}")
-def update_project(pid: str, req: ProjectUpdate):
+def update_project(pid: str, req: ProjectUpdate, current: dict = Depends(get_current_user)):
     with SessionLocal() as db:
-        p = db.get(Project, pid)
+        p = project_owned(db, pid, current)
         if not p:
             return {"status": "not_found"}
         for f in (
@@ -104,10 +109,10 @@ def update_project(pid: str, req: ProjectUpdate):
 
 
 @router.patch("/api/projects/{pid}/archive")
-def archive_project(pid: str):
+def archive_project(pid: str, current: dict = Depends(get_current_user)):
     """归档（软删除）：项目标记 is_archived，关联任务与材料保留，可随时恢复。"""
     with SessionLocal() as db:
-        p = db.get(Project, pid)
+        p = project_owned(db, pid, current)
         if not p:
             return {"status": "not_found"}
         p.is_archived = 1
@@ -117,10 +122,10 @@ def archive_project(pid: str):
 
 
 @router.patch("/api/projects/{pid}/restore")
-def restore_project(pid: str):
+def restore_project(pid: str, current: dict = Depends(get_current_user)):
     """从归档恢复为活跃项目。"""
     with SessionLocal() as db:
-        p = db.get(Project, pid)
+        p = project_owned(db, pid, current)
         if not p:
             return {"status": "not_found"}
         p.is_archived = 0
@@ -169,12 +174,12 @@ class BulkDeleteRequest(BaseModel):
     confirm: bool = False
 
 
-def _hard_delete_project(db, pid) -> dict | None:
+def _hard_delete_project(db, pid, current: dict) -> dict | None:
     """硬删除单个项目的级联逻辑：删任务+报告版本+产物文件、解绑材料；**不提交**，由调用方统一提交。
 
-    返回受影响统计；项目不存在返回 None。单删与批量删共用，避免逻辑分叉。
+    返回受影响统计；项目不存在（或不属于当前用户）返回 None。单删与批量删共用，避免逻辑分叉。
     """
-    p = db.get(Project, pid)
+    p = project_owned(db, pid, current)
     if not p:
         return None
     tasks = db.query(Task).filter(Task.project_id == pid).all()
@@ -203,7 +208,7 @@ def _hard_delete_project(db, pid) -> dict | None:
 
 
 @router.delete("/api/projects/{pid}")
-def delete_project(pid: str, confirm: bool = False):
+def delete_project(pid: str, confirm: bool = False, current: dict = Depends(get_current_user)):
     """硬删除单个项目，需 confirm=true 显式确认（默认拒绝，避免误删任务）。
 
     - 关联任务（含其报告版本，级联）一并删除，并清理其生成文件；
@@ -219,7 +224,7 @@ def delete_project(pid: str, confirm: bool = False):
             status_code=409,
         )
     with SessionLocal() as db:
-        stats = _hard_delete_project(db, pid)
+        stats = _hard_delete_project(db, pid, current)
         if stats is None:
             return {"status": "not_found"}
         db.commit()
@@ -227,7 +232,7 @@ def delete_project(pid: str, confirm: bool = False):
 
 
 @router.delete("/api/projects")
-def delete_projects(req: BulkDeleteRequest):
+def delete_projects(req: BulkDeleteRequest, current: dict = Depends(get_current_user)):
     """批量硬删除多个项目：ids 数组 + confirm=true。
 
     - 单次请求内统一提交（DB 层原子）；文件清理失败仅告警不阻断；
@@ -252,7 +257,7 @@ def delete_projects(req: BulkDeleteRequest):
     with SessionLocal() as db:
         for pid in req.ids:
             try:
-                stats = _hard_delete_project(db, pid)
+                stats = _hard_delete_project(db, pid, current)
                 if stats is None:
                     failed.append({"id": pid, "reason": "not_found"})
                 else:
@@ -265,19 +270,21 @@ def delete_projects(req: BulkDeleteRequest):
 
 
 @router.get("/api/projects")
-def list_projects(include_archived: bool = False):
+def list_projects(include_archived: bool = False, current: dict = Depends(get_current_user)):
     """项目列表。默认只返回活跃项目；include_archived=true 含已归档。"""
     with SessionLocal() as db:
         q = db.query(Project)
+        if settings.public_mode:
+            q = q.filter(Project.owner_id == current["id"])
         if not include_archived:
             q = q.filter(Project.is_archived == 0)
         return [_project_dict(r) for r in q.order_by(Project.updated_at.desc()).all()]
 
 
 @router.get("/api/projects/{pid}")
-def get_project(pid: str):
+def get_project(pid: str, current: dict = Depends(get_current_user)):
     with SessionLocal() as db:
-        r = db.get(Project, pid)
+        r = project_owned(db, pid, current)
         if not r:
             return {"status": "not_found"}
         return _project_dict(r)
@@ -287,7 +294,7 @@ def get_project(pid: str):
 
 
 @router.get("/api/projects/{pid}/detail")
-def project_detail(pid: str, include_archived: bool = True):
+def project_detail(pid: str, include_archived: bool = True, current: dict = Depends(get_current_user)):
     """项目页一站式数据：元信息 + 任务历史（含状态/错误/版本摘要）+ 报告版本 + 关联材料。
 
     - include_archived=true（默认）：任务历史含已归档任务；
@@ -295,7 +302,7 @@ def project_detail(pid: str, include_archived: bool = True):
     - 报告版本采用一次性 IN 批量查询（消除原 N+1 循环查询）。
     """
     with SessionLocal() as db:
-        p = db.get(Project, pid)
+        p = project_owned(db, pid, current)
         if not p:
             return {"status": "not_found"}
         q = db.query(Task).filter(Task.project_id == pid)
@@ -320,7 +327,7 @@ def project_detail(pid: str, include_archived: bool = True):
         for r in tasks:
             versions = versions_by_task.get(r.id, [])
             revised = [v for v in versions if v.kind == "revised"]
-            current = revised[-1] if revised else (versions[0] if versions else None)
+            cur = revised[-1] if revised else (versions[0] if versions else None)
             task_history.append(
                 {
                     "task_id": r.id,
@@ -342,8 +349,8 @@ def project_detail(pid: str, include_archived: bool = True):
                     "created_at": r.created_at.isoformat() if r.created_at else None,
                     "updated_at": r.updated_at.isoformat() if r.updated_at else None,
                     "version_count": len(versions),
-                    "current_version_id": current.id if current else None,
-                    "current_version_kind": current.kind if current else None,
+                    "current_version_id": cur.id if cur else None,
+                    "current_version_kind": cur.kind if cur else None,
                     "has_word": bool((r.result or {}).get("word")),
                     "pdf_available": bool((r.result or {}).get("pdf_available")),
                 }

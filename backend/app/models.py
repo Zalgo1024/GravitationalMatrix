@@ -33,15 +33,31 @@ def _now() -> datetime:
 
 
 class User(Base):
-    """会员系统预留表（Phase 2.3 未启用，不写任何鉴权逻辑）。"""
+    """用户表（Phase 2.3 预留结构 + 用户系统 Phase 0 激活）。
+
+    - 本地单机模式（PUBLIC_MODE=0）：不写任何用户行，接口按 default_owner_id 归属；
+    - 公共模式（PUBLIC_MODE=1）：注册/登录启用，所有写入数据按 owner_id 隔离。
+    """
 
     __tablename__ = "users"
 
     id = Column(String(32), primary_key=True)
     email = Column(String(255), unique=True, nullable=False)
     display_name = Column(String(120), nullable=True)
-    hashed_password = Column(String(255), nullable=True)  # 预留：当前不写入
+    hashed_password = Column(String(255), nullable=False)  # bcrypt 哈希
+    role = Column(String(16), default="user")  # user | admin
+    is_banned = Column(Integer, default=0)  # 0=正常 1=封禁（封禁后所有接口拒绝）
     created_at = Column(DateTime(timezone=True), default=_now)
+    last_seen_at = Column(DateTime(timezone=True), nullable=True)  # 最后活跃（后台看板用）
+    # 邮箱验证（Phase 1）：SMTP 未配置时注册直接置 1（验证功能关闭，零影响）；
+    # verification_code 为 6 位数字码（单次使用，15 分钟过期）
+    email_verified = Column(Integer, default=0)
+    verification_code = Column(String(8), nullable=True)
+    verification_code_expires = Column(DateTime(timezone=True), nullable=True)
+
+    # 会话失效锚点（账户恢复流）：密码被修改/重置时置为当前时间，
+    # 签发时间(iat)早于该时刻的 JWT 一律失效 —— 即「改密后其他设备立即下线」。
+    token_valid_after = Column(DateTime(timezone=True), nullable=True)
 
     tasks = relationship("Task", back_populates="owner")
 
@@ -250,6 +266,8 @@ class Material(Base):
         nullable=True,
         index=True,
     )
+    # 用户系统 Phase 0：材料归属（与 Task.owner_id / Project.owner_id 对齐）
+    owner_id = Column(String(32), ForeignKey("users.id"), nullable=True)
     title = Column(String(200), nullable=False, default="未命名素材")
     content_text = Column(Text, nullable=False, default="")
     source_type = Column(String(16), default="paste")  # paste|txt|md|docx|pdf
@@ -263,3 +281,45 @@ class Material(Base):
     created_at = Column(DateTime(timezone=True), default=_now)
 
     project = relationship("Project")
+
+
+class PasswordResetToken(Base):
+    """忘记密码 → 一次性重置令牌（账户恢复流）。
+
+    安全设计（对齐业界通行做法）：
+    - 数据库只存 token 的 sha256 十六进制哈希，明文仅存在于发往用户邮箱的链接里；
+      即便数据库泄露，也无法据此直接重置任何账号。
+    - 单次使用：used_at 非空即作废；同一用户再次申请时，此前未用的令牌一并作废。
+    - 短时效：默认 30 分钟过期。
+    """
+
+    __tablename__ = "password_reset_tokens"
+
+    id = Column(String(32), primary_key=True, default=lambda: uuid.uuid4().hex)
+    user_id = Column(
+        String(32), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    token_hash = Column(String(64), nullable=False, index=True)  # sha256 hex
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    used_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=_now)
+
+
+class AuditLog(Base):
+    """运营审计日志：谁 / 何时 / 对谁 / 做了什么（只追加，不修改）。
+
+    敏感操作（封禁、角色变更、删除、重置密码等）全部留痕，供后台追溯。
+    actor_id / actor_email 冗余存快照——即使用户后来被删，日志仍可读。
+    """
+
+    __tablename__ = "audit_logs"
+
+    id = Column(String(32), primary_key=True, default=lambda: uuid.uuid4().hex)
+    actor_id = Column(String(32), nullable=True, index=True)
+    actor_email = Column(String(255), nullable=True)
+    action = Column(String(64), nullable=False, index=True)  # 如 user.ban / project.delete
+    target_type = Column(String(32), nullable=True)  # user | project | task | auth
+    target_id = Column(String(64), nullable=True)
+    detail = Column(JSON, nullable=True)  # 动作附加信息（前后值等）
+    ip = Column(String(64), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=_now, index=True)

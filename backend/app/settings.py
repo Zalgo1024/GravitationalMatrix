@@ -49,6 +49,22 @@ class Settings:
         self.host: str = os.environ.get("HOST", "127.0.0.1")
         self.port: int = int(os.environ.get("PORT", "8000"))
 
+        # —— 跨域放行来源（A1：由硬编码改为可配置）——
+        # 默认放行本地两个前端：工作台 3000 + 独立运营后台 3001
+        # （localhost 与 127.0.0.1 各自都放行；预览面板可能用 127.0.0.1）。
+        # 对外部署时用 CORS_ORIGINS 覆盖（逗号分隔），例如：
+        #   CORS_ORIGINS=https://app.example.com,https://admin.example.com
+        # 注意：因为要带 cookie（credentials），这里的来源必须是精确值，不能用 "*"。
+        _default_cors = (
+            "http://localhost:3000,http://127.0.0.1:3000,"
+            "http://localhost:3001,http://127.0.0.1:3001"
+        )
+        self.cors_origins: list[str] = [
+            origin.strip()
+            for origin in os.environ.get("CORS_ORIGINS", _default_cors).split(",")
+            if origin.strip()
+        ]
+
         # —— 公共部署模式（对外公测/多用户）：开启后 resolve_config 不再回退
         # 服务器 .env / 全局 store 的密钥，所有访客必须自带 API Key（BYOK），
         # 防止服务器管理员遗留的密钥被公共流量白嫖。
@@ -64,6 +80,30 @@ class Settings:
         )
         self.default_owner_id: str = os.environ.get(
             "DEFAULT_OWNER_ID", "workbench"
+        )
+
+        # —— 注册邮箱验证（Phase 1）：SMTP 发信配置，不配 = 验证功能关闭 ——
+        # QQ 邮箱示例：SMTP_HOST=smtp.qq.com / SMTP_PORT=465 / SMTP_USER=你的QQ邮箱 /
+        # SMTP_PASS=授权码（不是登录密码）/ SMTP_SENDER 缺省取 SMTP_USER。
+        # 未配置时注册直接视为已验证，注册/登录流程零变化。
+        self.smtp_host: str = os.environ.get("SMTP_HOST", "").strip()
+        self.smtp_port: int = int(os.environ.get("SMTP_PORT", "465"))
+        self.smtp_user: str = os.environ.get("SMTP_USER", "").strip()
+        self.smtp_pass: str = os.environ.get("SMTP_PASS", "").strip()
+        self.smtp_sender: str = os.environ.get("SMTP_SENDER", "").strip() or self.smtp_user
+        self.smtp_enabled: bool = bool(self.smtp_host and self.smtp_user and self.smtp_pass)
+
+        # —— 账户恢复流（忘记密码）——
+        # 重置链接的前端基址：本地默认工作台 3000；对外部署时设为公网地址
+        # （例如 PUBLIC_BASE_URL=https://app.example.com）。
+        self.public_base_url: str = os.environ.get(
+            "PUBLIC_BASE_URL", "http://127.0.0.1:3000"
+        ).rstrip("/")
+        # 本地调试开关：SMTP 未配置时，允许 forgot-password 接口把重置链接回显在响应里
+        # （否则链接只进后端日志）。**默认关闭；公网实例务必保持关闭**，
+        # 否则任何人都能凭邮箱直接拿到重置链接。
+        self.dev_reset_echo: bool = (
+            os.environ.get("AUTH_DEV_RESET_ECHO", "").strip().lower() in {"1", "true", "yes", "on"}
         )
 
         # —— 全网搜索（T1：检索源自动选择 BING_KEY → BRAVE_KEY → DDG 零 Key）——

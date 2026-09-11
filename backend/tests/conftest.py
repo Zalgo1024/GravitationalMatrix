@@ -19,6 +19,12 @@ import pytest
 _TEST_TMP = Path(tempfile.mkdtemp(prefix="tsap_test_"))
 os.environ["GENERATED_DIR"] = str(_TEST_TMP / "generated")
 
+# 回归基线：测试一律跑在本地单机模式。否则 backend/.env 里的 PUBLIC_MODE=1
+# 会被 settings.load_dotenv() 读进来，导致所有未登录夹具的接口测试 401。
+# （python-dotenv 默认 override=False，已存在的环境变量优先于 .env）
+# 公网模式行为由 test_auth_isolation.py 用 monkeypatch 单独开启，互不影响。
+os.environ["PUBLIC_MODE"] = "0"
+
 
 @pytest.fixture(scope="session")
 def _test_env():
@@ -64,12 +70,16 @@ def tmp_root(_test_env):
 
 @pytest.fixture(scope="session")
 def client(_test_env):
-    """FastAPI TestClient（触发 startup：建表 / 种子 / 启动工人池）。"""
+    """FastAPI TestClient（触发 startup：建表 / 种子 / 启动工人池）。
+
+    base_url 用 https：公网模式（PUBLIC_MODE=1）下登录 cookie 带 Secure 标志，
+    http 的 testserver 不会回传 Secure cookie，会导致 auth 测试全部 401。
+    模拟 https 与真实部署行为一致。"""
     from fastapi.testclient import TestClient
 
     from app.main import app
 
-    with TestClient(app) as c:
+    with TestClient(app, base_url="https://testserver") as c:
         yield c
 
 

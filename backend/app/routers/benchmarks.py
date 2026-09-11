@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import time
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.auth import get_current_user, task_owned
 from app.benchmarking import evaluate_candidates, generate_general_baseline
 from app.db import SessionLocal
 from app.models import BenchmarkRun, ReportVersion, Task
@@ -67,9 +68,9 @@ def _serialize(row: BenchmarkRun) -> dict:
 
 
 @router.get("/api/reports/{task_id}/benchmarks")
-def list_benchmarks(task_id: str):
+def list_benchmarks(task_id: str, current: dict = Depends(get_current_user)):
     with SessionLocal() as db:
-        if db.get(Task, task_id) is None:
+        if task_owned(db, task_id, current) is None:
             return {"status": "not_found"}
         rows = (
             db.query(BenchmarkRun)
@@ -124,13 +125,13 @@ def create_benchmark(task_id: str, req: BenchmarkWrite):
 
 
 @router.post("/api/reports/{task_id}/benchmarks/general-baseline")
-def run_general_baseline(task_id: str, req: GeneralBaselineRequest):
+def run_general_baseline(task_id: str, req: GeneralBaselineRequest, current: dict = Depends(get_current_user)):
     """Generate a theory-free baseline with the currently configured model and same sources."""
     from app.llm_client import create_llm_from_config
     from app.llm_settings_store import resolve_config
 
     with SessionLocal() as db:
-        task = db.get(Task, task_id)
+        task = task_owned(db, task_id, current)
         if task is None:
             return {"status": "not_found"}
         ensure_original_version(db, task)
