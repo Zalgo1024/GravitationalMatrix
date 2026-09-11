@@ -5,14 +5,17 @@ import { usePathname } from "next/navigation";
 import {
   ChevronDown,
   LayoutGrid,
+  LogOut,
   Plus,
   RefreshCw,
   Settings,
+  ShieldCheck,
   Sparkles,
   TriangleAlert,
   Workflow,
 } from "lucide-react";
 import React, { useState } from "react";
+import { useOptionalAuth } from "@/lib/auth";
 import { useAppStore } from "@/lib/store";
 import { NavigationBackButton } from "./navigation-back-button";
 
@@ -29,7 +32,16 @@ function isActive(pathname: string, href: string) {
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { state, connection, connectionError, refreshWorkspace } = useAppStore();
+  // useOptionalAuth：测试环境可能没有 AuthProvider，此时按本地模式处理
+  const auth = useOptionalAuth();
+  const authUser = auth?.user ?? null;
+  const authRequired = auth?.authRequired ?? false;
   const [profileOpen, setProfileOpen] = useState(false);
+  // A6：工作台/公开构建里根本不含后台页面（见 next.config.ts 的 pageExtensions 门控），
+  // 所以入口也必须按构建期开关隐藏，否则会留下一个 404 的死链。
+  // NEXT_PUBLIC_* 在构建时被内联，只有运营后台构建才会设成 "1"。
+  const adminUiBuilt = process.env.NEXT_PUBLIC_ADMIN_UI === "1";
+  const isAdmin = adminUiBuilt && authRequired && authUser?.role === "admin";
   const engineLabel = state.settings.defaultEngine === "auto"
     ? "自动路由已就绪"
     : state.settings.defaultEngine === "llm"
@@ -64,15 +76,36 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               aria-expanded={profileOpen}
               onClick={() => setProfileOpen((current) => !current)}
             >
-              <span>林</span>
-              <div><strong>林知远</strong><small>分析研究员</small></div>
+              <span>{authRequired && authUser ? (authUser.display_name || authUser.email || "用")[0] : "林"}</span>
+              <div>
+                <strong>{authRequired && authUser ? (authUser.display_name || authUser.email) : "林知远"}</strong>
+                <small>{authRequired ? (authUser?.role === "admin" ? "管理员" : "分析研究员") : "本地研究者"}</small>
+              </div>
               <ChevronDown size={15} />
             </button>
             {profileOpen && (
               <div className="app-profile-menu">
-                <span>本地研究工作空间</span>
+                {authRequired && authUser ? (
+                  <span>{authUser.email ?? authUser.id}</span>
+                ) : (
+                  <span>本地研究工作空间</span>
+                )}
+                {isAdmin && (
+                  <Link href="/admin-console" onClick={() => setProfileOpen(false)}>
+                    <ShieldCheck size={14} /> 运营后台
+                  </Link>
+                )}
                 <Link href="/settings" onClick={() => setProfileOpen(false)}>工作空间设置</Link>
                 <Link href="/" onClick={() => setProfileOpen(false)}>返回产品首页</Link>
+                {authRequired && (
+                  <button
+                    type="button"
+                    className="app-profile-menu__logout"
+                    onClick={() => { setProfileOpen(false); void auth?.logout(); }}
+                  >
+                    <LogOut size={14} /> 退出登录
+                  </button>
+                )}
               </div>
             )}
           </div>

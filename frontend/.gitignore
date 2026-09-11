@@ -8,9 +8,17 @@
 /.next-dev/
 /.next-staging/
 /.next-previous/
+/.next-admin/
+/.next-admin-staging/
+/.next-admin-previous/
 /.next_bak*/
 /out/
 /coverage/
+
+# admin-pages build staging: scripts\admin-console.ps1 copies frontend\admin-pages\admin-console
+# into src\app\admin-console before the admin build and removes it after. Workbench builds must
+# never see this directory; it is a transient build artifact.
+/src/app/admin-console/
 
 # typescript
 *.tsbuildinfo
