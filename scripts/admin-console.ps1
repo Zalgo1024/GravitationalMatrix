@@ -201,18 +201,41 @@ function Remove-SafeBuildDirectory {
 $adminPagesDir = Join-Path $frontendDir "admin-pages\admin-console"
 $adminStagedDir = Join-Path $frontendDir "src\app\admin-console"
 
+function Remove-AdminPagesFromSrc {
+    if (-not (Test-Path -LiteralPath $adminStagedDir -PathType Container)) { return }
+    # Retry a few times: editors / file watchers (IDE preview, antivirus) can
+    # hold transient handles on freshly written files, making the first
+    # delete fail with "directory not empty".
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        try {
+            [System.IO.Directory]::Delete($adminStagedDir, $true)
+            return
+        }
+        catch {
+            Start-Sleep -Milliseconds 300
+        }
+    }
+    if (Test-Path -LiteralPath $adminStagedDir) {
+        throw "Could not remove staged admin pages at $adminStagedDir. Close any editor/preview holding these files, then retry."
+    }
+}
+
 function Copy-AdminPagesIntoSrc {
     if (-not (Test-Path -LiteralPath $adminPagesDir -PathType Container)) {
         throw "Admin pages source not found: $adminPagesDir"
     }
-    # Copy-Item -Recurse with -Force overwrites existing target contents.
-    Copy-Item -Path (Join-Path $adminPagesDir "*") -Destination $adminStagedDir -Recurse -Force
-}
-
-function Remove-AdminPagesFromSrc {
-    if (Test-Path -LiteralPath $adminStagedDir -PathType Container) {
-        # .NET Delete instead of Remove-Item: immune to safe-delete bulk guard.
-        [System.IO.Directory]::Delete($adminStagedDir, $true)
+    # Never copy on top of a stale staging tree: a previous run killed before
+    # its finally-cleanup leaves half-removed files behind, which makes
+    # Copy-Item fail with "cannot copy container to existing leaf". Always
+    # start from a clean, freshly created directory.
+    Remove-AdminPagesFromSrc
+    New-Item -ItemType Directory -Path $adminStagedDir -Force | Out-Null
+    # robocopy /E is deterministic for dir->dir copies (Copy-Item's
+    # container/leaf semantics are the thing that broke here).
+    # robocopy exit codes 0-7 are success; >= 8 means real failure.
+    robocopy $adminPagesDir $adminStagedDir /E /NFL /NDL /NJH /NJS /NP | Out-Null
+    if ($LASTEXITCODE -ge 8) {
+        throw "robocopy failed while staging admin pages (exit code $LASTEXITCODE)."
     }
 }
 
