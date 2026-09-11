@@ -1,286 +1,317 @@
-# 下一代升级方案：数据接入 · 监测告警 · 复核推演 · 地域维度
+# 下一代升级方案：功能清单与界面设计（v2）
 
-日期：2026-09-12 ｜ 状态：设计定稿，待排期实施
-适用范围：分析内核（engine/parser/viz_network）+ 后端（backend/app）+ 前端（frontend）
-
-> **一句话定位**：本项目的分析深度与交付形态（Word/PPT/证据账本）已领先主流开源，
-> 但**数据获取、持续告警、地域粒度**落后主流开源两个身位。本方案补齐这三块，
-> 并把「推演」落在与理论自洽的「条件阈值推演」上，而不是照抄大成本仿真。
+日期：2026-09-12 ｜ 版本：v2（按「落实到具体新功能 + 前端界面」重写，替代 v1 架构稿）
+原则：**只学思路，不抄代码**（边界见第三章）；每个功能必须落到「用户点什么、看到什么、得到什么」。
 
 ---
 
-## 〇、总原则（所有实施必须遵守）
+## 一、功能总览
 
-1. **采集与研判分离**：采集侧只产出统一的 `SourceItem`，研判侧永远只吃 `SourceItem`。
-   现有 `research_ledger.ResearchSource` 已经是研判侧的抽象，本次只补采集侧与字段。
-2. **新维度先落字段，再改提示词**：地域、平台、时间、互动量必须先成为结构化字段，
-   否则就只是 LLM 编出来的形容词，污染证据链。
-3. **只学思路，不抄代码**：所有外部项目（见第一章）仅参考其**架构范式与产品思路**，
-   不复制、不内嵌、不 import 任何第三方项目源码。第三方工具一律走「外部进程 + 文件交换」。
-4. **合规前置**：数据源分三级（见 2.2），默认只开 L1。地图绘制必须用自然资源部标准地图底图。
-5. **BYOK 红线不变**：采集与监测不引入任何服务端 LLM 密钥；检索优先零 Key 公开源，
-   沿用 `search.py` 的「降级不静默」协议（`degraded` 标记必须透传到 UI）。
-6. **老报告零回归**：新章节一律用可选哨兵（写了才渲染），新字段一律走 `db.py`
-   现有的幂等 ALTER 迁移循环，存量报告与存量库不迁移不报错。
+现有界面底座：`/dashboard` 工作台、`/analysis` 对话式新建分析、`/projects`、
+`/materials`、`/reports`、`/interest-analysis`、`/settings`，导航仅三项
+（工作台/新建分析/设置，定义在 `app-shell.tsx` 的 `navigation` 数组）。
 
----
-
-## 一、外部参考：学什么、不学什么（2026-09-11 实测口径）
-
-| 项目 | 实测星数 | 只学这条思路 | 明确不学/不做 |
+| 编号 | 功能（用户视角的一句话） | 界面落点 | 阶段 |
 |---|---|---|---|
-| TrendRadar | 62,185 | ① 多源聚合层与 RSS 统一归一；② 关键词订阅语法（必须词/过滤词/配额）；③ 推送模式分 daily/current/incremental + 推送时间窗 + 增量去重 | 不抄它的抓取实现与站点清单，站点清单按我方合规口径自定 |
-| 微舆 BettaFish | 42,197 | ① 多 Agent 分工 + 「论坛式辩论」避免观点被单一模型平均化；② 采集、分析、报告各自独立引擎 | 不做爬虫集群式全天候采集（成本与合规都不合适）；不引微调模型中间件 |
-| MiroFish | 72,127 | ① 预测输入是结构化图谱而非原始文本；② 人设带活跃时段/发言频率/影响力权重；③ 仿真轮数上限（官方建议 ≤40 轮）防失控 | 不做百万级 OASIS 仿真、不依赖 Zep Cloud 等外部记忆服务 |
-| MediaRadar | 6 | Analyst → Reviewer → Director 三角色复核链 | — |
-| Bright Data social-listening-agent | 10 | ① 8 阶段流水线中 Collect 与 Rank 分离（先收后排，不边收边判）；② 分析单位从 sentiment 转向 narrative | 不依赖其商业 API |
-| MediaCrawler | 58,200 | ① Playwright/CDP 复用登录态的思路；② search / detail / creator 三种采集模式正好对应「关键词监测 / 单事件深挖 / 主体画像」 | ⚠️ **其许可限定学习研究、非商业、禁止大规模采集**。绝不 import 其代码；仅作为可选外部进程适配器（3.3），默认关闭，使用者自负合规责任 |
+| F1 | 素材页一键联网采集，不用再手动复制粘贴 | `/materials` 弹窗 | P0 |
+| F2 | 新建分析自动取证，进度里能看到「采集中」 | `/analysis` composer + `/analysis/[taskId]` | P0 |
+| F3 | 项目可开「持续追踪」，定时重跑并记录变化 | `/projects/[id]` 监测卡片 | P1 |
+| F4 | 变更时间线：两次追踪之间改了什么一目了然 | `/projects/[id]` 追踪记录页签 | P1 |
+| F5 | 告警中心：什么变了、为什么算告警、去哪看 | 新页面 `/alerts` | P1 |
+| F6 | 通知渠道配置（邮件/企微/飞书） | `/settings` 新页签 | P1 |
+| F7 | 导航告警红点 | `app-shell.tsx` | P1 |
+| F8 | 报告复核结果卡：哪些结论存疑，一键重写该段 | `/reports/[id]` 复核抽屉 | P2 |
+| F9 | 情景推演卡：「如果…那么…否则作废」，可追踪触发 | `/reports/[id]` 章节 + 推演追踪 | P2 |
+| F10 | 新建分析选地域范围（省→市级联） | `/analysis` composer | P0 |
+| F11 | 报告地域分布：条形排行先行，地图第二步 | `/reports/[id]` 地域卡 + Word | P0/P1 |
+| F12 | 利益网络节点带属地徽标，跨地域关系虚线 | `/interest-analysis/[reportId]` | P1 |
+| F13 | 追踪与告警支持地域规则（跨省扩散/邻省沉默） | F3/F5 内的规则项 | P1 |
+| F14 | 后台：采集任务与配额监控 | `/admin-console/content` | P1 |
 
-**行业转向共识**（作为方向依据）：Dashboard 驱动 → Agent 驱动；sentiment →
-narrative + evidence；单体工具 → 可安装 Skill/MCP；描述 → 可证伪推演。
-
----
-
-## 二、能力一：数据接入 · 多平台采集
-
-### 2.1 目录与模块
-
-```
-backend/app/connectors/
-├── base.py          # SourceItem 契约 + Connector 基类 + 限流/降级协议
-├── hotlist.py       # L1：公开热榜聚合
-├── rss.py           # L1：RSS/Atom
-├── websearch.py     # L1：包装现有 search.py，补齐 published_at/platform 字段
-├── govdoc.py        # L1：政府公开文件（文号 + 发布机关 + 行政区划）★ 政策分析主粮
-└── adapters/
-    └── mediacrawler.py   # L2：外部进程适配器，默认关闭（ENABLE_SOCIAL_CRAWL=0）
-```
-
-### 2.2 数据源分级（写进 `docs/DATA_COMPLIANCE.md`，先于代码）
-
-| 级别 | 范围 | 默认 | 约束 |
-|---|---|---|---|
-| L1 公开可采 | 热榜聚合端点、RSS/Atom、政府公开文件、搜索引擎结果 | **开启** | 限速、UA 如实、遵守 robots |
-| L2 受限源 | 社媒平台正文/评论（需登录态） | **默认关闭** | 外部进程隔离；单次少量；不批量账号、不绕风控；仅使用者自担合规责任的研究用途 |
-| L3 禁止 | 绕过登录/付费墙、个人信息批量归集、验证码破解 | 永不实现 | 写入文档红线，代码评审卡点 |
-
-### 2.3 `SourceItem` 统一契约（采集侧唯一输出）
-
-```
-id, platform, platform_id, url, title, text, author,
-published_at, retrieved_at,                 ← 补齐现有 SearchHit 缺失的时间字段
-region_code, region_name, region_level, region_source,   ← 见第五章
-engagement {read, like, comment, share},    ← 声量/叙事份额的计算基础
-lang,
-fingerprint,          # 归一化文本指纹（SimHash 或 MD5），去重主键
-canonical_url,        # 去 utm/尾斜杠后的规范链接
-independence_group,   # 同源转载归并组（避免「100 条其实是 1 条」）
-degraded,             # 沿用 search.py 降级协议：超时/限流/解析失败必须显式标记
-raw                   # 原始载荷（JSON），供审计回放
-```
-
-→ 归一化后写入 `ResearchSource`（见第六章字段清单）。**去重三件套
-（fingerprint / canonical_url / independence_group）是采集层第一优先级**——
-现有 ledger 已预留这五个字段（`content_fingerprint` / `canonical_url` /
-`original_url` / `duplicate_of` / `independence_group`），当前全部空置。
-
-### 2.4 采集任务调度
-
-- 采集走现有 `queue.py` 任务队列，新增阶段名 `collect`（排在检索之前），WS 进度可见；
-- 每源独立限速（QPS）+ 每日配额；任何源失败返回 `degraded` 摘要，不静默、不中断整批；
-- L2 适配器：subprocess 拉起外部工具（独立 venv / 独立配置），只读取其输出的
-  SQLite/JSON 文件，映射为 `SourceItem`；进程超时即杀，输出目录不入库不入 git。
-
-**验收**：一次分析任务能自动带回 ≥20 条带 URL / 时间 / 平台 / 指纹的原始条目，
-且同一转载源在 `independence_group` 下归并为 1 条有效证据。
+**明确不做的界面**：不做独立的「采集工作台」大屏、不做实时数据流 dashboard、
+不做社媒评论区浏览器（只进证据池）。每项能力都收敛到现有页面的卡片/弹窗/页签里。
 
 ---
 
-## 三、能力二：持续监测 · 预警推送
+## 二、功能规格
 
-现状：`ResearchMonitor` 已支持定时重跑（interval 1–720h），
-`compare_research_ledgers` 已做确定性差分（节点增删 / 立场变化 / 关系增删），
-`research_changes._risk_level` 已有风险信号公式。缺「事件化」与「推送」。
+### F1 素材页一键联网采集（P0，第 1–2 周）
 
-### 3.1 四段设计
+**用户故事**：公关乙方接到一个事件，打开素材页点「联网采集」，输入关键词，
+30 秒后看到一份带勾选框的条目列表（标题/来源/时间/平台），勾选后一键转存为素材，
+后续分析直接引用——不用再开五个网站手动复制。
 
-```
-订阅(MonitorConfig) → 差分(diff) → 告警判定(AlertRule) → 推送(notifiers)
-```
+**界面**：`/materials` 页头部加按钮「联网采集」→ 弹窗 `CollectDialog`：
+- 来源类型四选一（单选）：热榜快照 / RSS 源 / 网页搜索 / 政府公开文件
+- 输入区：关键词（热榜模式可留空）或 RSS 地址或文号
+- 结果列表：复选框 + 列（标题、来源站点、发布时间、平台徽标、字数）；同源转载自动折叠成一行，角标「含 N 条转载」
+- 底部「转存为素材（N）」→ 逐条建 `Material`，`source_type=collect`
 
-1. **订阅升级**：`ResearchMonitor` 增加 `keywords`（订阅语法：必须词/过滤词/配额，
-   思路学 TrendRadar 的 frequency_words）、`region_scope`（第五章）、`platform_scope`、
-   `push_window`（静默时间窗，避免夜间推送）。
-2. **差分扩展**：在现有 diff 输出上补四类：新增叙事、叙事份额变化、极性翻转、新增关键主体。
-3. **告警判定**（新表 `AlertRule` + `AlertEvent`）：规则必须是**可解释阈值**，
-   绝不交给 LLM 判断重要性：
+**后端支撑**：`backend/app/connectors/`（hotlist/rss/websearch/govdoc 四个 connector，
+统一输出 `SourceItem`）；新接口 `POST /api/collect/preview`（返回条目列表，不入库）+
+`POST /api/collect/save`（勾选项转存 Material）。去重三件套
+（`content_fingerprint` / `canonical_url` / `independence_group`）在 connector 层填充，
+预览时就完成归并折叠。失败条目标 `degraded` 并给原因，不静默。
 
-| 规则（默认集，可配） | 级别 |
+**验收**：输入「惠州 一人公司」能带回 ≥20 条带时间/来源/指纹的条目；同一稿件
+被 5 个站转载时列表只显示 1 行 + 转载角标。
+
+### F2 新建分析自动取证（P0，第 1–2 周）
+
+**用户故事**：和分析现在一样输入一句话点分析，但任务进度里多出「采集中」一步，
+完成后能展开看「本次取证 23 条：政府公开 4 / 新闻 9 / 热榜 6 / 其他 4」，
+报告附录自动带上这些来源。
+
+**界面**：
+- `/analysis` composer 在「分析用途」下拉旁加开关「自动取证」（默认开，记忆上次选择）
+- `/analysis/[taskId]` 进度页新增阶段「采集中」（走现有 WS 推送，阶段名 `collect`），
+  完成后显示来源分布小条形图 + 条目计数
+
+**后端支撑**：`AnalyzeRequest` 加 `auto_collect: bool = True`；任务管道在检索阶段前
+插 `collect` 阶段；`SourceItem` 归一后与现有 `source_urls` 白名单机制合并。
+
+**验收**：关开关 → 行为与现在完全一致（零回归）；开开关 → 报告附录来源数明显增加
+且每条带发布时间。
+
+### F3 项目持续追踪开关（P1，第 3 周）
+
+**用户故事**：报告交出去后，在项目页打开「持续追踪」，选每天 9 点重跑一次，
+关键词沿用原标题；第二天打开项目，能看到「昨晚自动重跑完成：新增 1 个关键主体，
+叙事 B 份额 +18pp」。
+
+**界面**：`/projects/[id]` 页新增「持续追踪」卡片：
+- 开关 + 频率（每天/每 6h/每周）+ 静默时间窗（默认 22:00–08:00 不推送）
+- 关键词订阅框（支持 `+必须词` `!过滤词`，占位符给示例）
+- 「地域范围」「平台范围」两个多选（默认继承项目）
+- 最近一次运行状态行（时间/结果/下次运行）
+
+**后端支撑**：扩展现有 `ResearchMonitor`（keywords/region_scope/platform_scope/
+push_window 四列，ALTER 幂等）；复用现有调度器 `monitoring.py`。
+
+**验收**：开启后到期自动重跑并生成版本；关闭后不再运行；旧项目不受影响。
+
+### F4 变更时间线（P1，第 3–4 周）
+
+**用户故事**：点开「追踪记录」页签，是一条竖向时间线，每条记录显示
+「+2 主体 / −1 关系 / 立场翻转 1 处 / 风险 low→medium」，点开任意一条
+能看到左右对照（旧版 vs 新版的关系图叠加，变化处高亮）。
+
+**界面**：`/projects/[id]` 加页签「追踪记录」（项目页改页签布局：概览/报告/追踪记录）：
+- 时间线列表：每次 monitor 运行一条，徽标显示变更计数
+- 详情：diff 摘要表（新增主体/消失主体/立场变化/新增关系/消失关系，各一列）
+  + 「查看对比」按钮 → 跳 `/interest-analysis/[reportId]` 的对比模式（两版网络图叠加，新增绿/消失灰/翻转橙）
+
+**后端支撑**：`compare_research_ledgers` 输出已具备（节点增删/立场变化/关系增删），
+需补：diff 结果持久化到 `AlertEvent.payload` 或新表 `monitor_diffs`；
+前端对比视图复用现有 vis-network，两层 graph merge 渲染。
+
+**验收**：连续追踪 3 天的项目，能回放三天内主体与关系的变化过程。
+
+### F5 告警中心（P1，第 4 周）
+
+**用户故事**：导航多一个「告警」入口（带红点数），进去是告警流：每条告警一张卡——
+级别徽标（P0 红 / P1 橙 / P2 黄）、命中规则原文（如「负面关系 strength≥4 新增」）、
+一句话 diff 摘要、两个按钮「看报告」「看证据」。
+
+**界面**：新页面 `/alerts`（`app-shell.tsx` 的 `navigation` 数组加一项，图标 `Bell`）：
+- 筛选行：级别 / 项目 / 时间范围 / 已读未读
+- 告警卡：徽标 + 规则名 + 摘要 + 时间 + 「看报告」(→`/reports/[id]`)「看证据」(→来源原文链接)
+- 空状态文案：「暂无告警。开启项目持续追踪后，结构变化会出现在这里。」
+
+**后端支撑**：`AlertRule`（规则模板 + 阈值参数）+ `AlertEvent`（severity/payload/
+dedupe_key/channels/sent_at/status）；默认规则集写死五条（P0：critical gap 新增；
+P1：负面强关系新增、叙事份额 24h Δ≥15pp；P2：立场翻转、声量环比 ≥3×），
+`AlertRule` 表支持改阈值但暂不做规则编辑器 UI（避免界面蔓延）。
+告警发送写审计日志。
+
+**验收**：人为制造一次立场翻转（改材料重跑），5 分钟内 `/alerts` 出现 P2 告警，
+且同事件 6 小时内不重复。
+
+### F6 通知渠道配置（P1，第 4 周）
+
+**用户故事**：在设置里填一个企业微信群机器人地址，之后告警除了进 `/alerts`
+还会推到群里，消息里带「看报告」链接。
+
+**界面**：`/settings` 加页签「通知渠道」：
+- 渠道卡片列表：邮件（复用现有 SMTP，显示已配置/未配置）、企业微信、飞书、钉钉，
+  每张卡一个地址输入框 + 「发送测试消息」按钮
+- 全局开关：「静默时间窗」与「每项目每日最多推送 N 条」
+
+**后端支撑**：`backend/app/notifiers/`（email 复用 `email_sender.py`；wecom/feishu/
+dingtalk 三个 webhook 客户端，各 ≤80 行）；配置存 `data/notify_settings.json`
+（沿用 `llm_settings.json` 的存储惯例）。
+
+**验收**：每个渠道「发送测试消息」能收到；未配置的渠道自动跳过不报错。
+
+### F7 导航告警红点（P1，第 4 周）
+
+`app-shell.tsx` 导航项支持 `badge` 字段；轮询 `/api/alerts/unread-count`
+（60s 一次），「告警」项显示未读数。点进 `/alerts` 即清零。
+
+### F8 报告复核结果卡（P2，第 5 周）
+
+**用户故事**：报告生成完，标题下有个徽标「复核通过」或「2 处存疑」；点开抽屉
+看到存疑清单——「第 3 节：『某公司持股 40%』标注为事实但无证据来源」，每条带
+「仅重写该段」按钮，点后只重生成那一段（不重跑全报告）。
+
+**界面**：`/reports/[id]` 阅读页头部徽标 + 右侧抽屉 `ReviewDrawer`：
+- issue 列表：类型图标 + 所属章节 + 涉及原句（高亮）+ 证据链接（有则显示）
+- 每条两个操作：「重写该段」（定向重生成）/「标记已知风险」（写入版本备注）
+
+**后端支撑**：`backend/app/reviewer.py`——6 类检查中 5 类纯代码判定
+（key claim 无 evidence_ids / conflicted relation / 弱来源支撑 key claim /
+同源重复计数 / 地域时间字段缺失），只有「叙事观点被平均化」交给 LLM；
+复核结果存 `ReportVersion.research_snapshot` 旁新字段 `review_result`；
+定向重写复用现有 revise 通道（`operation=revise` + section 定位）。
+
+**验收**：评测集上 unsupported claim 占比下降；「重写该段」不改变其余章节
+（diff 校验）。
+
+### F9 情景推演卡（P2，第 6 周）
+
+**用户故事**：报告里多一章「情景推演」，三条卡片式呈现：
+「若 X 方 48h 内未回应（条件）→ 叙事 B 份额反超（阈值）；72h 内出现官方回应
+则本推演作废（失效）」，每条卡的「条件」「阈值」都能点回证据；报告页顶部出现
+「推演追踪」条：三个推演各自的状态（待验证 / 已触发 / 已作废），可手动标记，
+开追踪的项目由监测自动判定。
+
+**界面**：
+- 正文渲染：`情景推演` 章节解析成卡片组（条件 / 推演 / 失效 三段式，边框色区分），
+  每段角标链到证据
+- `/reports/[id]` 顶部「推演追踪」条：状态胶囊（待验证灰 / 已触发红 / 已作废灰划线），
+  点击可改状态（写入版本备注，进审计）
+
+**后端支撑**：`scenario_simulation` 可选哨兵章节（parser/analysis_prompt.md/
+docx_renderer 三处同步）；推演条目要求 LLM 输出结构化 JSON（condition/metric/
+invalidate + evidence_ids），契约校验不通过则该章降级为定性表述。
+
+**验收**：推演每条可点回证据；条件被后续监测数据命中时状态自动变「已触发」。
+
+### F10 分析地域范围选择（P0，第 2–3 周）
+
+**用户故事**：新建分析时选「广东省 → 惠州市」，报告就只围绕这个地域展开：
+政策章讲惠州的落地与奖补，舆情章只统计本地声量，附录来源按地域标注。
+
+**界面**：`/analysis` composer「分析用途」旁加「地域范围」级联多选
+（省 → 市，可多选，空 = 全国）；选择后输入框上方出现地域 chip，可删除。
+移动端折叠为「地域（2）」摘要。
+
+**后端支撑**：`AnalyzeRequest` 加 `region_scope: list[str]`；行政区划数据用
+国家统计局省/市两级码表（内置 JSON，`backend/app/data/regions.json`，不引第三方库）；
+`Project.region_scope` 持久化；提示词装配时注入地域约束段。
+
+**验收**：同题两次分析（选惠州 vs 不选），正文地域相关内容与来源显著不同；
+不选时报告与现在完全一致（零回归）。
+
+### F11 报告地域分布（P0 条形图 / P1 地图）
+
+**用户故事**：报告阅读页有一张「地域分布」卡：横条排行（广东省 34% / 北京市 12% /
+…），悬停显示条数与代表来源；Word 报告同一位置出「地域分布表 + 条形图」；
+第二步升级为交互地图（点省份下钻到来源列表）。
+
+**界面**：`/reports/[id]` 侧栏或正文附录前插「地域分布」组件：
+- 第一步：纯 HTML/CSS 横条排行（不引地图库，零合规风险）
+- 第二步：`/interest-analysis/[reportId]` 加「地域」页签，ECharts 中国地图
+  （**底图必须用自然资源部标准地图服务 GeoJSON 并标注审图号**，GeoJSON 文件
+  进 `frontend/public/geo/`，README 记录审图号与来源链接）
+
+**后端支撑**：来源的 `region_code` 聚合（去重后按 `independence_group` 计份额）；
+`viz_network.py` 新增 `viz="geo"`：PNG 阶段输出 matplotlib 横条图（Word 用），
+HTML 阶段输出 ECharts 地图（交互页用）；数据不足（<3 个地域有标注）时整卡隐藏
+并提示「来源地域标注不足」。
+
+**验收**：10 份政策样本的地域识别 ≥90%（按发布机关），未识别一律 unknown
+不进统计；Word 与 HTML 数据一致。
+
+### F12 利益网络属地徽标（P1，第 5 周）
+
+**用户故事**：利益网络图里每个主体节点右下角多一个小属地徽标（「粤」「京」），
+跨省的利益动线边变成虚线——一眼看出「这是条跨地域的利益链」。
+
+**界面**：`/interest-analysis/[reportId]` 网络图（vis-network）：节点增加属地
+badge 渲染（vis-network 无原生 badge，用节点 `font.multi` 或拆子节点方案，实现期定）；
+`cross_region=true` 的边用 `dashes: true` + 图例说明。
+
+**后端支撑**：ledger 的 node 加 `region_code`、relation 加 `cross_region`；
+export 给前端的 JSON 补字段。
+
+**验收**：跨地域关系在图中可辨识；无地域数据的老报告图不变（零回归）。
+
+### F13 地域化监测与告警规则（P1，第 5–6 周）
+
+F3 的追踪配置里地域范围生效；F5 的规则集追加两条地域规则：
+
+| 规则 | 级别 |
 |---|---|
-| critical gap 新增 ≥1 | P0 |
-| 负面关系 strength≥4 新增 | P1 |
-| 某叙事份额 24h 内 Δ≥15pp | P1 |
-| 同一主体立场 polarity 反向 | P2 |
-| 声量 24h 环比 ≥3× | P2 |
+| 跨省扩散：A 省政策/事件落地后，B 省 24h 内出现同源叙事（fingerprint 同组） | P1 |
+| 沉默地区：地域范围内某省声量占比 <5% 且近 7 天零新增来源 | P2 |
 
-   **去重与抑制**：同 `(subject, rule)` 冷却期 6h；相似事件按 fingerprint 合并；
-   每次 monitor 运行最多产出 N 条告警（防刷屏）。
-4. **推送**（`backend/app/notifiers/`）：`email`（复用 `email_sender.py` 的 SMTP）/
-   `wecom` / `feishu` / `dingtalk` / `telegram` / `webhook`（通用）。
-   每条告警强制三件套：**发生了什么**（diff 摘要）+ **为什么**（命中规则原文）+
-   **去哪看**（报告版本链接 + 证据原文链接）。
+**验收**：构造双省素材能触发跨省扩散告警；`/alerts` 卡片上显示涉及的省份徽标。
 
-### 3.2 落库与审计
+### F14 后台采集监控（P1，第 4 周）
 
-`AlertEvent(monitor_id, rule_id, severity, payload, dedupe_key, channels, sent_at, status)`；
-告警发送写 `AuditLog`（复用现有 `app/audit.py`）。
-
-**验收**：监测周期跑完，能在企业微信/邮箱收到一条带可点链接的告警；
-同一事件 6h 内不重复推送；静默时间窗内零打扰。
+`/admin-console/content` 页加「采集任务」区块：各 connector 今日调用数 / 配额用量 /
+`degraded` 次数 / 最近失败原因；L2 社媒采集适配器的总开关（默认关）也放这里。
 
 ---
 
-## 四、能力三：复核 · 推演与预测
+## 三、竞品思路借鉴边界（只学思路，不抄代码）
 
-### 4.1 复核环（先做，便宜且立刻提质量）
+| 项目 | 学的思路 | 不学/不做 |
+|---|---|---|
+| TrendRadar（62.2k★） | 订阅关键词语法（F3）；推送模式分增量/汇总 + 静默时间窗（F3/F5/F6）；多渠道 webhook（F6） | 不抄其抓取实现与站点清单 |
+| 微舆（42.2k★） | 多 Agent 分工与辩论（F8 的 Reviewer 思想）；采集/分析/报告引擎分离 | 不做爬虫集群与微调模型中间件 |
+| MiroFish（72.1k★） | 推演输入用结构化图谱（F9 的 evidence_ids 绑定）；人设带活跃时段/影响力权重（P2 可选小仿真） | 不做百万级仿真、不依赖外部记忆服务 |
+| MediaCrawler（58.2k★） | search/detail/creator 三种采集模式对应 F1 的三种来源 | ⚠️ 许可限学习研究非商用：**不 import 其代码**，仅可作外部进程适配器（P2 可选、默认关），文档注明使用者自负合规责任 |
+| Bright Data agent（10★） | Collect 与 Rank 分离（先收后排，F1/F2 的两段式） | 不依赖商业 API |
 
-三角色两阶段（思路参考三角色复核链与论坛辩论，**实现完全自有**）：
-
-```
-Analyst（现有生成，产出 ledger + 正文）
-   → Reviewer（只挑错，不重写）
-   → Director（返工或放行，最多 2 轮）
-```
-
-Reviewer 的 issue 类型表——**能算的绝不问 LLM**：
-
-| issue 类型 | 判定方式 |
-|---|---|
-| key 级 claim 无 evidence_ids | 确定性（遍历 ledger） |
-| conflicted relation 未解决 | 确定性（`status == "conflicted"`） |
-| tertiary 及以下来源支撑 key claim | 确定性（source_level × claim.significance） |
-| 同 independence_group 被重复计数 | 确定性（分组计数） |
-| 地域/时间标注缺失 | 确定性（字段判空） |
-| 叙事矩阵内部观点被平均化 | LLM（唯一必须 LLM 的检查项） |
-
-Reviewer 意见进审计日志；Director 决定返工（定向重生成对应章节）或放行并附保留意见。
-**验收**：评测集上 unsupported claim 占比下降、contract 返工率下降。
-
-### 4.2 推演：条件阈值推演（不引入 OASIS 大仿真）
-
-每条推演强制绑定三要素：**触发条件（可观测）+ 阈值（可计算）+ 失效条件（可证伪）**。
-示例：*若 X 方 48h 内未公开回应（可观测），则叙事 B 份额超过 A（可计算）；
-72h 内出现官方回应则本推演作废（可证伪）。*
-
-- 数据基础：ledger 的关系图（polarity / strength / status）+ 叙事份额时序；
-- 呈现：新增可选章节 `scenario_simulation`（情景推演），用可选哨兵接入；
-- **优势叙事**（对外可讲）：我们的推演每条挂 `evidence_ids`，可证伪、可追责；
-  仿真式预测给不出证据链。
-- （可选，P2）最小仿真：20–50 个 persona（直接从 ledger actor 节点生成，带利益类型/
-  立场/影响力权重/活跃时段），跑 5–10 轮观点交互，只输出「立场分布变化」一个指标，
-  不引入外部仿真框架。
+红线：**不复制任何第三方项目源码进本仓库**；所有第三方工具只允许
+「外部进程 + 文件交换」集成；实现前在 PR 描述写明「参考了谁的什么思路」。
 
 ---
 
-## 五、能力四：地域维度（省 / 市 / 区县）
-
-**战略判断**：主流开源地域能力集体偏弱；而政策分析天然地域化（省级/市级/试点、
-政策时差、谁先试点谁跟进）。地域化是本项目**反超的口子**，不是补丁。
-
-### 5.1 数据模型（最小改动，全部走幂等 ALTER）
-
-| 位置 | 新增字段 |
-|---|---|
-| `ResearchSource` | `region_code`（GB/T 2260 六位）、`region_name`、`region_level`（national/province/city/district/unknown）、`region_source`（识别依据） |
-| `Project` / `Task` | `region_scope`（JSON 数组，如 `["440000","441300"]`，空=全国） |
-| `ResearchNode`（ledger） | `region_code`（主体属地） |
-| `ResearchRelation`（ledger） | `cross_region`（布尔，跨地域关系） |
-| `Material` | `url`、`published_at`、`region_code`（人工素材与抓取数据同池） |
-
-### 5.2 地域识别：三级流水线，LLM 只兜底
-
-1. **规则优先**：行政区划三级词典（省/市/区县 + 别名，"粤"→440000、"惠州"→441300）；
-   政策文号正则抽发布机关→行政区划码（`粤府〔2024〕xx号`）。零成本、最高准确率。
-2. **结构化字段**：政府公开文件/政策库接口直接带发布机关与行政区划字段——优先接。
-3. **LLM 兜底**：仅对前两级未命中的条目调用；必须输出 `region_code` + 理由；
-   置信度不达标 → `unknown`。**宁可 unknown 不可猜**——地域被编造会污染整条证据链。
-4. `region_source` 取值固定枚举：`issuer`（发布机关）/ `title` / `body` / `account`（账号属地）/ `unknown`。
-
-### 5.3 章节：三个「地域锚点」（全部可选哨兵，老报告零回归）
-
-| 模式 | 改动 |
-|---|---|
-| 政策 | `policy_portrait` 增加子维度「适用地域与层级」（国家级/省级/市级/试点）；新增可选章节 `policy_region`（地域适用性与扩散路径：谁先试点、谁跟进、谁没动） |
-| 事件/舆情 | `opinion_actors` 增加「主体属地」标注；新增可选章节 `opinion_region`（声量/叙事份额按省分布 + **沉默地区识别**）；`opinion_evolution` 增加「地域扩散顺序」 |
-| 组织 | 组织属地与跨地域利益动线（总部/分支/供应链地域） |
-
-实现路径：`parser._SECTION_IDS` 加映射 → `analysis_prompt.md` 加模板段 →
-`docx_renderer.render_docx` 加 section_order 分支（三处同步，见 AGENTS.md 既有规则）。
-
-### 5.4 可视化：第四种 viz 类型 `geo`（分两步）
-
-- **第一步（零风险）**：Word/HTML 出「地域分布表 + 横向条形排行」，不碰边界数据；
-- **第二步（地图）**：交互 HTML 用 ECharts 中国地图。**合规红线：底图必须来自
-  自然资源部标准地图服务并标注审图号，禁止随手抓取 GeoJSON 画边界。**
-- 前置修正：README 技术栈写的是 D3.js + ECharts，实际 `package.json` 只有
-  `vis-network`——引入地图库前先修 README，避免按错误前提选型。
-- 配色：沿用六类利益色；地图只表达**一个**变量（份额或强度）的色阶。
-
-### 5.5 地域化告警（监测与地域的联动，价值最大处）
-
-把 `region_code` 作为 AlertRule 的过滤与分组维度：
-- 「A 省政策落地后，B 省 24h 内出现同源叙事」→ 跨省扩散告警；
-- 「试点地区声量异常但邻省沉默」→ 沉默地区本身即信号。
-
----
-
-## 六、数据模型与迁移清单（汇总）
-
-全部走 `db.py` 既有幂等 ALTER 循环（`if col not in cols: alters.append(...)`）：
+## 四、数据模型改动汇总（全部走 `db.py` 幂等 ALTER）
 
 | 表 | 新列 |
 |---|---|
-| `research_sources`（ledger 存储） | platform, published_at, region_code, region_name, region_level, region_source, engagement(JSON) |
-| `projects` / `tasks` | region_scope(JSON) |
-| `research_monitors` | keywords(JSON), region_scope(JSON), platform_scope(JSON), push_window(JSON) |
-| `materials` | url, published_at, region_code |
-| 新表 | `alert_rules` / `alert_events` |
-| 新文件 | `connectors/*`、`notifiers/*`、`reviewer.py`、`region_dict.py`（行政区划词典） |
+| `materials` | `platform`, `published_at`, `region_code`, `collect_meta`(JSON) |
+| `projects` / `tasks` | `region_scope`(JSON) |
+| `research_monitors` | `keywords`(JSON), `region_scope`(JSON), `platform_scope`(JSON), `push_window`(JSON) |
+| ledger 存储（research_snapshot 内） | node.region_code / relation.cross_region / source.region_* / source.engagement |
+| `report_versions` | `review_result`(JSON) |
+| 新表 | `alert_rules`, `alert_events`（monitor_diffs 归并进 payload） |
+| 新文件 | `connectors/*`、`notifiers/*`、`reviewer.py`、`data/regions.json` |
 
 ---
 
-## 七、实施排期（6 周，验收写死）
+## 五、实施排期（按功能编号，验收 = 能当面演示）
 
-| 周 | 交付 | 验收标准 |
+| 周 | 功能 | 演示脚本 |
 |---|---|---|
-| 1–2 | connectors L1（hotlist/rss/govdoc/websearch）+ SourceItem 归一 + 去重三件套 | 单次分析自动带回 ≥20 条带指纹条目；转载归并生效 |
-| 2–3 | 地域字段 + 行政区划词典 + 政策地域识别 + `policy_region` 可选章节 | 10 份政策样本中发布机关地域识别 ≥90%，未命中一律 unknown |
-| 3–4 | AlertRule/AlertEvent + notifiers（email + 企微先行）+ 冷却去重 | 收到带三件套的告警；同事件 6h 不重复 |
-| 5 | Reviewer 复核环（确定性检查优先） | 评测集 unsupported claim 占比下降 |
-| 6 | 地域分布条形图进 Word + `viz=geo` 第一步 + 条件阈值推演章节 | 推演每条可点回证据链接 |
+| 1–2 | F1 + F2 | 素材页采集→勾选→转存→分析引用；进度页看到「采集中」与来源分布 |
+| 2–3 | F10 + F11(条形图) | 同题对比「选惠州 vs 全国」两份报告的地域差异；Word 出地域表 |
+| 3–4 | F3 + F4 + F14 | 开追踪→次日自动重跑→时间线看到 diff；后台看采集配额 |
+| 4–5 | F5 + F6 + F7 | 群里收到告警→点链接直达报告；制造立场翻转触发 P2 告警且 6h 去重 |
+| 5–6 | F8 + F12 | 报告复核徽标→抽屉→「重写该段」diff 校验；网络图属地徽标与虚线 |
+| 6 | F9 + F13 + F11(地图) | 推演卡三段式可点回证据；跨省扩散告警；交互地图带审图号 |
 
-**明确不做**：百万级仿真、绕登录态采集、批量账号池、引入外部仿真/记忆框架、
-把任何第三方项目源码复制进本仓库。
-
----
-
-## 八、配套文档（实施时逐份产出）
-
-1. `docs/CONNECTOR_DESIGN.md` — SourceItem 契约、三级数据源、限流/降级协议
-2. `docs/DATA_COMPLIANCE.md` — 采集红线、L2 隔离原则、robots/ToS/个人信息边界
-3. `docs/ALERTING_DESIGN.md` — 订阅模型、规则表、冷却去重、渠道规范
-4. `docs/REVIEW_LOOP.md` — 三角色契约、issue 类型表、返工上限
-5. `docs/FORECAST_DESIGN.md` — 条件阈值推演规范、可证伪要求、与 ledger 绑定
-6. `docs/REGION_MODEL.md` — 行政区划码规范、三级识别策略、地域章节与 viz=geo 规范、地图合规红线
-7. `docs/EVALUATION.md` — golden set、评分维度、回归门槛（复核环验收依赖它）
+依赖关系：F2 依赖 F1 的 connectors；F4/F5 依赖 F3；F8 的地域/时间缺失检查依赖
+F10 字段；F11(地图)/F12 依赖 F10 的码表。
 
 ---
 
-## 九、风险与红线（复查清单）
+## 六、合规与红线（实现前先读）
 
-- [ ] **不复制外部代码**：只实现思路；第三方工具仅外部进程调用，默认关闭
-- [ ] **MediaCrawler 许可**：学习研究/非商业——适配器文档必须写明「使用者自负合规责任」
-- [ ] **地图合规**：标准地图底图 + 审图号；PNG 阶段用条形图规避
-- [ ] **BYOK 不破坏**：采集/监测不新增服务端密钥；BYOK 面向 LLM 调用不变
-- [ ] **地域不编造**：LLM 兜底必须给理由，否则 unknown
-- [ ] **零回归**：可选哨兵章节 + 幂等 ALTER；改完跑 `体检.bat` + 后端全量 pytest
+1. **不抄代码**：见第三章；实施时先产出 `docs/DATA_COMPLIANCE.md`。
+2. **数据源分级**：L1 热榜/RSS/政府公开/搜索（默认开，限速+robots）；L2 社媒登录态
+   （外部进程、默认关、仅研究用途、使用者自担责任）；L3 绕过登录/批量个人信息
+   （永不实现）。
+3. **地图合规**：标准地图底图 + 审图号；PNG 阶段用条形图规避；来源不足时隐藏卡片
+   而不是编数据。
+4. **地域不编造**：LLM 兜底识别必须输出码值 + 理由，否则 `unknown`；
+   `region_source` 枚举固定：`issuer`/`title`/`body`/`account`/`unknown`。
+5. **BYOK 不破坏**：采集与监测不新增服务端密钥。
+6. **零回归**：可选哨兵章节 + 幂等 ALTER + 新开关默认值等于旧行为；
+   每个功能合入前跑后端全量 pytest + `体检.bat`。
+7. **README 技术栈失真先行修正**：现状写 D3/ECharts、实际仅 vis-network；
+   引入 ECharts（F11 地图步）前先改 README。
