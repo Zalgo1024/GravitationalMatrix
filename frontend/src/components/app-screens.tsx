@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, ChevronRight, FileText, Network, Search, Trash2, Upload } from "lucide-react";
+import { ArrowRight, ChevronRight, FileText, Network, Radar, Search, Trash2, Upload } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
 import { analysisTypes, phaseLabels, type AnalysisType, type AppState, type ProjectStatus, type TaskStatus } from "@/lib/domain";
 import { useAppStore } from "@/lib/store";
@@ -11,6 +11,7 @@ import { AnalysisNetwork } from "@/components/analysis-network";
 import { ReportReader } from "@/components/report-reader";
 import { ProjectMonitorPanel } from "@/components/project-monitor-panel";
 import { LlmConnectionSettings } from "@/components/llm-connection-settings";
+import { CollectDialog } from "@/components/collect-dialog";
 
 const projectStatus: Record<ProjectStatus, { label: string; tone: "running" | "warning" | "verified" }> = {
   active: { label: "分析中", tone: "running" },
@@ -150,6 +151,7 @@ export function MaterialsScreen() {
   const { state, refreshWorkspace } = useAppStore();
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploadError, setUploadError] = useState("");
+  const [collectOpen, setCollectOpen] = useState(false);
   async function importFiles(files: FileList | null) {
     if (!files?.length) return;
     setUploadError("");
@@ -167,7 +169,7 @@ export function MaterialsScreen() {
       setUploadError(reason instanceof Error ? reason.message : "材料上传失败，请稍后重试。");
     }
   }
-  return <><PageHeading eyebrow="证据基础" title="材料库" action={<button className="primary-button" type="button" onClick={() => inputRef.current?.click()}><Upload size={16} />导入材料</button>}>保留原始材料与来源关系，让每一个结论都可以回到它的证据基础。</PageHeading><input ref={inputRef} className="visually-hidden" type="file" multiple accept=".pdf,.docx,.txt,.md" onChange={(event) => { void importFiles(event.target.files); }} /><section className="material-importer"><div><Upload size={22} /><strong>导入文件作为分析来源</strong><span>支持 PDF、Word（docx）、TXT 与 Markdown，单文件不超过 50MB；文件会进入解析队列。</span>{uploadError && <p className="form-error" role="alert">{uploadError}</p>}</div><button type="button" onClick={() => inputRef.current?.click()}>选择文件</button></section><section className="split-section"><div className="section-title"><div><span className="eyebrow">全部材料</span><h2>已导入来源</h2></div><span className="muted-count">{state.materials.length} 份</span></div>{state.materials.length ? <div className="material-records">{state.materials.map((material) => <div className="material-record" key={material.id}><span><FileText size={19} /></span><div><strong>{material.name}</strong><small>{material.kind === "file" ? "文件" : material.kind} · {formatDate(material.updatedAt)}</small></div><p>{material.note}</p><span className="table-icon" aria-hidden="true"><ChevronRight size={18} /></span></div>)}</div> : <p className="section-empty">尚未导入材料。材料也可以在新建分析时一并加入。</p>}</section></>;
+  return <><PageHeading eyebrow="证据基础" title="材料库" action={<div className="heading-actions"><button className="secondary-button" type="button" onClick={() => setCollectOpen(true)}><Radar size={16} />多平台采集</button><button className="primary-button" type="button" onClick={() => inputRef.current?.click()}><Upload size={16} />导入材料</button></div>}>保留原始材料与来源关系，让每一个结论都可以回到它的证据基础。</PageHeading><CollectDialog open={collectOpen} onOpenChange={setCollectOpen} onSaved={refreshWorkspace} /><input ref={inputRef} className="visually-hidden" type="file" multiple accept=".pdf,.docx,.txt,.md" onChange={(event) => { void importFiles(event.target.files); }} /><section className="material-importer"><div><Upload size={22} /><strong>导入文件作为分析来源</strong><span>支持 PDF、Word（docx）、TXT 与 Markdown，单文件不超过 50MB；文件会进入解析队列。</span>{uploadError && <p className="form-error" role="alert">{uploadError}</p>}</div><button type="button" onClick={() => inputRef.current?.click()}>选择文件</button></section><section className="split-section"><div className="section-title"><div><span className="eyebrow">全部材料</span><h2>已导入来源</h2></div><span className="muted-count">{state.materials.length} 份</span></div>{state.materials.length ? <div className="material-records">{state.materials.map((material) => <div className="material-record" key={material.id}><span><FileText size={19} /></span><div><strong>{material.name}</strong><small>{material.kind === "file" ? "文件" : material.kind} · {formatDate(material.updatedAt)}</small></div><p>{material.note}</p><span className="table-icon" aria-hidden="true"><ChevronRight size={18} /></span></div>)}</div> : <p className="section-empty">尚未导入材料。材料也可以在新建分析时一并加入。</p>}</section></>;
 }
 
 export function ReportsScreen() {

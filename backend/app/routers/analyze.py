@@ -169,6 +169,7 @@ async def analyze(
                 search_enabled=req.search,
                 web=req.web,
                 source_urls=req.source_urls or None,
+                auto_collect=bool(req.auto_collect),
                 status="queued",
             )
         )
@@ -255,6 +256,7 @@ def retry_task(
             search_enabled=t.search_enabled,  # 继承搜索开关
             web=t.web,  # 继承联网开关
             source_urls=t.source_urls,  # 继承来源白名单
+            auto_collect=t.auto_collect,  # 继承自动取证开关
         )
         db.add(new_task)
         db.commit()

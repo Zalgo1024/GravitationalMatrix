@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, ChevronDown, CircleHelp, FileText, Globe2, Paperclip, Send, Sparkles, X } from "lucide-react";
+import { CheckCircle2, ChevronDown, CircleHelp, FileText, Globe2, Paperclip, Radar, Send, Sparkles, X } from "lucide-react";
 import React, { useRef, useState } from "react";
 import { analysisTypes, type AnalysisType, type EngineMode, type MaterialRecord, type NewAnalysisInput, type Project } from "@/lib/domain";
 
@@ -55,6 +55,8 @@ export function AnalysisCreation({
   const [type, setType] = useState<AnalysisType>(initialType);
   // 自由输入的默认工作流是“先检索，再分析”；用户仍可主动关闭联网检索。
   const [useWeb, setUseWeb] = useState(true);
+  // F2 自动取证：提交分析时同步跑多平台采集，采集结果自动入库材料库。
+  const [autoCollect, setAutoCollect] = useState(false);
   const [attachments, setAttachments] = useState<MaterialRecord[]>([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -99,6 +101,7 @@ export function AnalysisCreation({
         inputMode: "freeform",
         materialIds: attachments.map((item) => item.id),
         web: useWeb,
+        autoCollect,
       });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "创建分析失败，请稍后重试。");

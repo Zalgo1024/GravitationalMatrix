@@ -5,13 +5,19 @@
 - 手动保存 edited_by='human'；AI 再改 edited_by='ai'；
 - is_current=1 表示当前版本（回滚即切换该标记），回滚后立即重渲产物到
   backend/generated/{task_id}_v{n}/，历史版本产物不删除。
+
+F15 数据表：GET /api/reports/{task_id}/tables/{table_id} 从版本绑定的研究账本
+（research_snapshot）派生结构化数据表（来源证据/主体清单/关系清单），支持 JSON 与
+CSV（utf-8-sig，Excel 直开）两种输出；纯派生零 LLM 调用。
 """
+import csv
+import io
 import logging
 import os
 import uuid
 
 from fastapi import APIRouter, Depends
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.auth import get_current_user, task_owned
@@ -479,6 +485,146 @@ def get_report_version(task_id: str, vid: str, current: dict = Depends(get_curre
             "research_status": v.research_status or "unavailable",
             "research": v.research_snapshot,
         }
+
+
+# ---------------------------------------------------------------------------
+# F15：结构化数据表（来源证据 / 主体清单 / 关系清单）
+# 纯派生：从版本绑定的 research_snapshot 聚合，零 LLM 调用；CSV 为 utf-8-sig。
+# ---------------------------------------------------------------------------
+
+_TABLE_DEFS: dict[str, dict] = {
+    "sources": {
+        "name": "来源证据表",
+        "columns": ["编号", "标题", "链接", "来源类型", "质量档", "发布时间", "独立源组", "重复判定", "摘要"],
+    },
+    "subjects": {
+        "name": "主体清单表",
+        "columns": ["编号", "主体", "角色", "立场", "权重", "置信度", "证据数", "利益诉求"],
+    },
+    "relations": {
+        "name": "关系清单表",
+        "columns": ["源主体", "目标主体", "关系描述", "极性", "强度", "状态", "证据数", "利益类型"],
+    },
+}
+
+
+def _ledger_rows(table_id: str, ledger: dict) -> list[list]:
+    """从研究账本 dict 派生表格行（与 _TABLE_DEFS 列序一一对应）。"""
+    if not isinstance(ledger, dict):
+        return []
+    rows: list[list] = []
+    if table_id == "sources":
+        for i, s in enumerate(ledger.get("sources") or [], 1):
+            if not isinstance(s, dict):
+                continue
+            dup = "重复" if s.get("duplicate_of") else ("首发" if s.get("content_fingerprint") else "")
+            rows.append([
+                s.get("id") or f"S{i}",
+                s.get("title") or "",
+                s.get("url") or s.get("canonical_url") or "",
+                s.get("source_type") or "",
+                s.get("quality_tier") or "",
+                s.get("published_at") or "",
+                s.get("independence_group") or "",
+                dup,
+                (s.get("excerpt") or "").strip()[:160],
+            ])
+    elif table_id == "subjects":
+        for i, n in enumerate(ledger.get("nodes") or [], 1):
+            if not isinstance(n, dict):
+                continue
+            evidence = n.get("evidence_ids") or []
+            interests = n.get("interests") or []
+            rows.append([
+                n.get("id") or f"N{i}",
+                n.get("label") or "",
+                n.get("role") or "",
+                n.get("stance") or "",
+                n.get("weight") if n.get("weight") is not None else "",
+                n.get("confidence") if n.get("confidence") is not None else "",
+                len(evidence),
+                "；".join(str(x) for x in interests)[:200],
+            ])
+    elif table_id == "relations":
+        labels = {
+            (n.get("id") if isinstance(n, dict) else None): (n.get("label") or "")
+            for n in (ledger.get("nodes") or []) if isinstance(n, dict)
+        }
+        for i, r in enumerate(ledger.get("relations") or [], 1):
+            if not isinstance(r, dict):
+                continue
+            interest_types = r.get("interest_types") or []
+            rows.append([
+                labels.get(r.get("source_node")) or r.get("source_node") or "",
+                labels.get(r.get("target_node")) or r.get("target_node") or "",
+                r.get("label") or "",
+                r.get("polarity") or "",
+                r.get("strength") if r.get("strength") is not None else "",
+                r.get("status") or "",
+                r.get("evidence_count") if r.get("evidence_count") is not None else len(r.get("evidence_ids") or []),
+                "；".join(str(x) for x in interest_types)[:200],
+            ])
+    return rows
+
+
+def _resolve_report_version(db, task_id: str, version_id: str | None):
+    if version_id:
+        return (
+            db.query(ReportVersion)
+            .filter(ReportVersion.id == version_id, ReportVersion.task_id == task_id)
+            .first()
+        )
+    return _current_version(db, task_id)
+
+
+@router.get("/api/reports/{task_id}/tables/{table_id}")
+def get_report_table(
+    task_id: str,
+    table_id: str,
+    version_id: str | None = None,
+    format: str = "json",
+    current: dict = Depends(get_current_user),
+):
+    """按表 id 返回结构化数据表；?format=csv 时输出 Excel 可直开的 CSV 文件。"""
+    if table_id not in _TABLE_DEFS:
+        return {"error": "table_not_found", "message": f"未知数据表：{table_id}"}
+    with SessionLocal() as db:
+        task = task_owned(db, task_id, current)
+        if not task:
+            return {"status": "not_found"}
+        _ensure_original_version(db, task)
+        version = _resolve_report_version(db, task_id, version_id)
+        if version is None:
+            return {"status": "not_found"}
+        ledger = version.research_snapshot or {}
+        rows = _ledger_rows(table_id, ledger)
+        columns = _TABLE_DEFS[table_id]["columns"]
+        research_status = version.research_status or "unavailable"
+    result = {
+        "task_id": task_id,
+        "version_id": version.id,
+        "version_no": version.version_no or 1,
+        "table_id": table_id,
+        "table_name": _TABLE_DEFS[table_id]["name"],
+        "columns": columns,
+        "rows": rows,
+        "row_count": len(rows),
+        "research_status": research_status,
+    }
+    if format == "csv":
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow(columns)
+        writer.writerows(rows)
+        # utf-8-sig：Excel 打开中文不乱码
+        data = buf.getvalue().encode("utf-8-sig")
+        filename = f"{task_id}_{table_id}.csv"
+        return StreamingResponse(
+            iter([data]),
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f"attachment; filename={filename}"},
+        )
+    return result
 
 
 @router.delete("/api/reports/{task_id}")

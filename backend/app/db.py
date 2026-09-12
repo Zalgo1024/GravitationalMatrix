@@ -138,6 +138,9 @@ def init_db() -> None:
                 "ALTER TABLE tasks ADD COLUMN monitor_id VARCHAR(32) "
                 "REFERENCES research_monitors(id)"
             )
+        # F2：自动取证开关（分析时同步多平台采集入库）
+        if "auto_collect" not in cols:
+            alters.append("ALTER TABLE tasks ADD COLUMN auto_collect BOOLEAN DEFAULT 0")
         # T13：report_versions 版本管理扩展（version_no/edited_by/summary/is_current）
         vcols = {c["name"] for c in inspect(engine).get_columns("report_versions")}
         for col, ddl in (

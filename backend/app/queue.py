@@ -400,6 +400,9 @@ def _process(task_id: str) -> None:
         web = bool(t.web)  # T8：联网写报告
         source_urls = t.source_urls or []  # T8：用户勾选白名单
         material_ids = t.material_ids or []
+        auto_collect = bool(t.auto_collect)  # F2：自动取证
+        owner_id_val = t.owner_id  # 采集素材归属（detached 后仍可读已加载属性）
+        project_id_val = t.project_id
         operation = t.operation or "analysis"
 
         if operation == "enrichment":
@@ -535,6 +538,100 @@ def _process(task_id: str) -> None:
     else:
         _update_phase("search_skipped", 15)
 
+    # —— F2：自动取证（多平台采集 → 去重 → 入库素材 → 并入证据包）——
+    # 失败只降级不中断：采集是增强项，绝不能拖垮分析主链路。
+    collect_info: dict | None = None
+    if auto_collect:
+        _update_phase("search", 18)
+        collect_started = time.monotonic()
+        try:
+            from uuid import uuid4 as _uuid4
+
+            from app.connectors.base import dedupe_items
+            from app.connectors.govdoc import collect_govdoc
+            from app.connectors.hotlist import collect_hotlist
+            from app.connectors.rss import collect_rss
+            from app.connectors.websearch import collect_websearch
+
+            collect_query = (input_text or title or "").strip()[:200]
+            raw_items: list = []
+            degraded: list[str] = []
+            for runner in (
+                lambda: collect_websearch(collect_query, max_results=10),
+                lambda: collect_govdoc(collect_query, max_results=6),
+                collect_rss,
+                collect_hotlist,
+            ):
+                got, note = runner()
+                raw_items.extend(got)
+                if note:
+                    degraded.append(note)
+            items = [it for it in dedupe_items(raw_items) if not it.duplicate_of]
+            new_rows: list = []
+            with SessionLocal() as db2:
+                existing_urls = {
+                    (row.source or "").strip().rstrip("/")
+                    for row in db2.query(Material.source).all()
+                    if row.source
+                }
+                seen_urls: set[str] = set()
+                for it in items[:20]:
+                    key = (it.canonical_url or it.url).rstrip("/")
+                    if not key or key in existing_urls or key in seen_urls:
+                        continue
+                    seen_urls.add(key)
+                    body = (it.content_text or it.snippet or "").strip()
+                    if not body:
+                        body = f"（来源：{it.url}）"
+                    else:
+                        body = f"{body}\n\n（来源：{it.url}）"
+                    m = Material(
+                        id=_uuid4().hex,
+                        project_id=project_id_val,
+                        owner_id=owner_id_val,
+                        title=(it.title or "自动取证来源")[:200],
+                        content_text=body[:100_000],
+                        source_type="collect",
+                        source=it.url[:500] or None,
+                        tags="自动取证",
+                        char_count=len(body),
+                        warnings=[f"collect_channel:{it.platform}"],
+                    )
+                    db2.add(m)
+                    new_rows.append(m)
+                if new_rows:
+                    db2.commit()
+            new_ids = [m.id for m in new_rows]
+            # 并入证据包（bundle 可能是 None：纯采集场景也要有素材可分析）
+            if new_rows:
+                collected_bundle = materials.bundle_from_material_rows(new_rows)
+                bundle = materials.merge_bundles(bundle, collected_bundle)
+                material_ids = list(material_ids) + new_ids
+                with SessionLocal() as db2:
+                    t2 = db2.get(Task, task_id)
+                    if t2 is not None:
+                        t2.material_ids = material_ids
+                        db2.commit()
+            collect_info = {
+                "channels": ["websearch", "govdoc", "rss", "hotlist"],
+                "collected": len(items),
+                "saved": len(new_rows),
+                "independent_sources": len(
+                    {it.independence_group for it in items if it.independence_group}
+                ),
+                "degraded": degraded or None,
+            }
+            logger.info(
+                "自动取证完成 task=%s collected=%s saved=%s", task_id, len(items), len(new_rows)
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("自动取证失败（已降级，不影响分析）：%s", _safe_error_text(e))
+            collect_info = {"error": _safe_error_text(e)}
+        finally:
+            collect_seconds = round(time.monotonic() - collect_started, 3)
+            if isinstance(collect_info, dict):
+                collect_info["seconds"] = collect_seconds
+
     _emit(task_id, "generating")
     try:
         # web 素材包（bundle 为 MaterialBundle；web_on 但无素材时仍传 web_mode=True 加引用约束）
@@ -569,6 +666,8 @@ def _process(task_id: str) -> None:
         safe = {k: v for k, v in out.items() if k != "folder"}
         timings = safe.setdefault("timings", {})
         timings["search_seconds"] = round(search_seconds, 3)
+        if collect_info:
+            safe["collect"] = collect_info
         # raw_response 仅落库（诊断用），不推给前端/WS
         raw_response = safe.pop("raw_response", None)
         with SessionLocal() as db:

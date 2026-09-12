@@ -22,6 +22,7 @@ export async function createAnalysisTask(
       project_id: input.projectId ?? null,
       material_ids: input.materialIds,
       web: Boolean(input.web),
+      auto_collect: Boolean(input.autoCollect),
       llm_config: { profile_id: profileId },
     }),
   }) as { task_id: string };

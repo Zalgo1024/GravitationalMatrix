@@ -19,6 +19,7 @@ import { ResearchTimeline } from "./research-timeline";
 import { ResearchComparison } from "./research-comparison";
 import { QuantitativeEvidence } from "./quantitative-evidence";
 import { ResearchBenchmark } from "./research-benchmark";
+import { ReportDataTables } from "./report-data-tables";
 import { ReportEnrichmentLauncher } from "./report-enrichment-launcher";
 
 function formatDate(value: string) {
@@ -81,7 +82,7 @@ export function ReportReader({ report, task, onReload }: { report: Report; task?
   const [rollbackNotice, setRollbackNotice] = useState("");
   const [downloading, setDownloading] = useState<ReportArtifactKind | "">("");
   const [downloadError, setDownloadError] = useState("");
-  const [view, setView] = useState<"report" | "research" | "network">("report");
+  const [view, setView] = useState<"report" | "research" | "data" | "network">("report");
   const [readingMode, setReadingMode] = useState<ReportReadingMode>("standard");
   const { state } = useAppStore();
   const [researchChanges, setResearchChanges] = useState<ResearchChangeSet | undefined>();
@@ -227,7 +228,7 @@ export function ReportReader({ report, task, onReload }: { report: Report; task?
     {!isCurrent && !loadingVersion && historicalMarkdown && <div className="historical-version-banner"><History size={17} /><div><strong>正在查看历史版本 v{selectedVersion?.version}</strong><span>这是只读预览，不会改变当前报告。</span></div><button type="button" onClick={() => void selectVersion(currentVersionId)}>返回当前版本</button></div>}
     {rollbackNotice && <p className="delivery-notice" role="status">{rollbackNotice}</p>}
     <div className="report-reader__toolbar">
-      <div className="report-view-tabs" role="tablist" aria-label="内容视图">{([["report", "报告本土"], ["research", "研究"], ["network", "关系网络"]] as const).map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={view === id} onClick={() => setView(id)}>{label}</button>)}</div>
+      <div className="report-view-tabs" role="tablist" aria-label="内容视图">{([["report", "报告本土"], ["research", "研究"], ["data", "数据"], ["network", "关系网络"]] as const).map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={view === id} onClick={() => setView(id)}>{label}</button>)}</div>
       <section className="report-download-toolbar" aria-label="报告下载">
         <span>下载当前正在查看的 v{selectedVersion?.version ?? report.version}。</span>
         <div className="download-actions"><button type="button" onClick={() => void download("zip")} disabled={Boolean(downloading)} aria-label="打包下载全套产物"><Archive size={15} />{downloading === "zip" ? "打包中" : "全套"}</button><button type="button" onClick={() => void download("word")} disabled={Boolean(downloading)} aria-label="下载 Word"><Download size={15} />{downloading === "word" ? "Word 生成中" : "Word"}</button><button type="button" onClick={() => void download("pdf")} disabled={Boolean(downloading)} aria-label="下载 PDF"><Download size={15} />{downloading === "pdf" ? "PDF 生成中" : "PDF"}</button><button type="button" onClick={() => void download("pptx")} disabled={Boolean(downloading)} aria-label="下载 PPT"><Download size={15} />{downloading === "pptx" ? "PPT 生成中" : "PPT"}</button><button type="button" onClick={() => downloadMarkdown(report.title, markdown, selectedVersion?.version ?? report.version)} disabled={loadingVersion || (!isCurrent && !historicalMarkdown)} aria-label="下载 Markdown"><FileText size={15} />Markdown</button></div>
@@ -249,6 +250,8 @@ export function ReportReader({ report, task, onReload }: { report: Report; task?
             <div id="quantitative-evidence" className="research-anchor"><QuantitativeEvidence research={renderedResearch} /></div>
             <div id="research-benchmark" className="research-anchor"><ResearchBenchmark taskId={report.taskId} versionId={selectedVersionId} /></div>
           </>
+        ) : view === "data" ? (
+          <ReportDataTables taskId={report.taskId} versionId={selectedVersionId} />
         ) : view === "network" ? (
           <AnalysisNetwork
             taskId={report.taskId}

@@ -20,6 +20,8 @@ export interface NewAnalysisInput {
   projectId?: string;
   /** 是否开启联网检索撰写（映射到后端 /api/analyze 的 web 字段） */
   web?: boolean;
+  /** F2 自动取证：分析时同步多平台采集并把结果入库材料库（后端 auto_collect） */
+  autoCollect?: boolean;
 }
 
 export interface ProjectSummary {

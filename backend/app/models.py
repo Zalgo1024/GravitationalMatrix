@@ -140,6 +140,9 @@ class Task(Base):
     source_urls = Column(JSON, nullable=True)          # 用户勾选白名单（null=自动检索全部）
     monitor_id = Column(String(32), ForeignKey("research_monitors.id"), nullable=True, index=True)
 
+    # —— F2：自动取证（分析时同步跑多平台采集并把结果入库素材库）——
+    auto_collect = Column(Boolean, default=False)     # True=本次分析附带多平台采集入库
+
     # —— 阶段四：LLM 增强模式元信息（仅在 llm 模式记录，便于复现与审计）——
     llm_model = Column(String(120), nullable=True)       # 实际使用的模型（如 deepseek-chat）
     llm_temperature = Column(Float, nullable=True)        # 采样温度
