@@ -194,6 +194,10 @@ def ledger_rows(table_id: str, ledger: dict) -> list[list]:
     return rows
 
 
+# 每个省回传的来源条目上限（点省浮层够看即可，避免 /geo 载荷膨胀）
+_GEO_ITEMS_PER_REGION = 8
+
+
 def geo_aggregation(ledger: dict) -> dict:
     """F11 地图聚合（纯派生零 LLM）：来源按地域归并 → 独立源组计数 → 份额。
 
@@ -202,7 +206,9 @@ def geo_aggregation(ledger: dict) -> dict:
     - independent_sources：按 independence_group 去重后的独立源数（同组转载只算 1）；
     - share：该省独立源数 / 有地域的独立源总数（0~1，四舍五入 3 位）；
     - coverage：有地域的独立源数 / 全部独立源数（过低时前端灰显提示）；
-    - polarity：立场极性聚合（初版空数组，等主体 stance 打通后填充）。
+    - polarity：立场极性聚合（初版空数组，等主体 stance 打通后填充）；
+    - items：该省的代表来源条目（同组转载已去重，最多 _GEO_ITEMS_PER_REGION 条），
+      供点省浮层直接展示；item_total 是该省实际条目总数，超出部分前端提示省略。
     """
     if not isinstance(ledger, dict):
         return {"regions": [], "coverage": 0.0, "polarity": []}
@@ -220,8 +226,12 @@ def geo_aggregation(ledger: dict) -> dict:
         province_code = str(detail.get("region_code") or "")
         province_name = str(detail.get("region_name") or "")
         city_name = str(detail.get("city_name") or "")
-        group = groups.setdefault(key, {"province": (province_code, province_name), "cities": set(), "count": 0})
+        group = groups.setdefault(key, {"province": (province_code, province_name), "cities": set(), "count": 0, "sample": None, "city": ""})
         group["count"] += 1
+        # 同组转载只保留一条代表条目，避免点开一个省看到十条重复标题
+        if group["sample"] is None:
+            group["sample"] = s
+            group["city"] = city_name
         if province_code:
             # 组内取第一个命中的省（同组转载地域一致）；无命中的组保持未识别
             if not group["province"][0]:
@@ -240,14 +250,25 @@ def geo_aggregation(ledger: dict) -> dict:
         located_indep += 1
         bucket = by_province.setdefault(
             pcode,
-            {"region_code": pcode, "region_name": pname, "independent_sources": 0, "sources": 0, "cities": set()},
+            {"region_code": pcode, "region_name": pname, "independent_sources": 0, "sources": 0, "cities": set(), "items": []},
         )
         bucket["independent_sources"] += 1
         bucket["sources"] += group["count"]
         bucket["cities"].update(group["cities"])
+        sample = group.get("sample")
+        if isinstance(sample, dict):
+            bucket["items"].append({
+                "id": str(sample.get("id") or ""),
+                "title": str(sample.get("title") or "未命名来源"),
+                "url": str(sample.get("url") or ""),
+                "published_at": str(sample.get("published_at") or ""),
+                "source_type": str(sample.get("source_type") or "unknown"),
+                "city": str(group.get("city") or ""),
+            })
 
     regions = []
     for bucket in by_province.values():
+        items = sorted(bucket["items"], key=lambda item: (item["published_at"] or "9999"), reverse=False)
         regions.append(
             {
                 "region_code": bucket["region_code"],
@@ -256,6 +277,9 @@ def geo_aggregation(ledger: dict) -> dict:
                 "sources": bucket["sources"],
                 "share": round(bucket["independent_sources"] / located_indep, 3) if located_indep else 0.0,
                 "cities": sorted(bucket["cities"]),
+                # 点省浮层用：只回代表条目（同组转载已去重），前端按 need 再要全量
+                "items": items[:_GEO_ITEMS_PER_REGION],
+                "item_total": len(items),
             }
         )
     regions.sort(key=lambda r: (-r["independent_sources"], r["region_name"]))

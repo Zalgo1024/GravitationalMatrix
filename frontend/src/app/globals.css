@@ -1864,6 +1864,27 @@ html[data-theme="dark"] .editor-source textarea { background: oklch(.185 .014 25
 .report-geo__sea-canvas { width: 148px; height: 130px; }
 .report-geo__sea-title { position: absolute; left: 0; right: 0; bottom: 0; text-align: center; font-size: 10px; color: var(--ink-muted); padding: 2px 0; background: var(--surface); }
 .report-geo__note { margin: 0; font-size: 10px; color: var(--ink-muted); line-height: 1.6; }
+/* F11 补：TOP5 排行条 + 点省来源浮层 */
+.report-geo__top { display: grid; gap: 6px; margin: 4px 0 0; padding: 0; list-style: none; }
+.report-geo__top button { display: grid; grid-template-columns: 74px 1fr 92px; align-items: center; gap: 9px; width: 100%; border: 1px solid transparent; border-radius: 7px; background: transparent; padding: 5px 7px; cursor: pointer; text-align: left; }
+.report-geo__top button:hover { border-color: var(--line); background: var(--surface-muted); }
+.report-geo__top button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.report-geo__top-name { font-size: 11px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.report-geo__top-bar { display: block; height: 6px; border-radius: 999px; background: var(--surface-muted); overflow: hidden; }
+.report-geo__top-bar i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #8FB6E8, #2E5FA3); }
+.report-geo__top-value { font-size: 10px; color: var(--ink-muted); text-align: right; }
+.report-geo__detail { border: 1px solid var(--line); border-radius: 10px; background: var(--surface); margin-top: 4px; padding: 12px 14px; }
+.report-geo__detail > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 9px; }
+.report-geo__detail > header strong { display: block; font-size: 13px; color: var(--ink); }
+.report-geo__detail > header span { display: block; margin-top: 3px; font-size: 10px; color: var(--ink-muted); line-height: 1.5; }
+.report-geo__detail > header button { border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--ink-muted); padding: 4px; cursor: pointer; }
+.report-geo__items { display: grid; gap: 5px; margin: 0; padding: 0; list-style: none; }
+.report-geo__items a, .report-geo__items > li > div { display: flex; align-items: flex-start; gap: 7px; border-radius: 7px; padding: 7px 8px; text-decoration: none; color: var(--ink); }
+.report-geo__items a:hover { background: var(--surface-muted); color: var(--accent); }
+.report-geo__items strong { display: block; font-size: 11px; font-weight: 600; line-height: 1.45; }
+.report-geo__items small { display: block; margin-top: 2px; font-size: 9px; color: var(--ink-muted); }
+.report-geo__detail-empty, .report-geo__detail-more { margin: 6px 0 0; font-size: 10px; color: var(--ink-muted); }
+.interest-view-tabs { display: inline-flex; gap: 6px; margin-bottom: 14px; }
 @media (max-width: 980px) {
   .report-geo { padding: 17px 15px; }
   .report-geo__main { height: 320px; }

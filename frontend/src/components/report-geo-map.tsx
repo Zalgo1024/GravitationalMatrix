@@ -9,12 +9,20 @@ import * as echarts from "echarts/core";
 import { MapChart } from "echarts/charts";
 import { TooltipComponent, VisualMapComponent } from "echarts/components";
 import { CanvasRenderer } from "echarts/renderers";
-import { LoaderCircle, MapPin } from "lucide-react";
+import { ExternalLink, LoaderCircle, MapPin, X } from "lucide-react";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "@/lib/api";
 
 echarts.use([MapChart, TooltipComponent, VisualMapComponent, CanvasRenderer]);
 
+interface GeoItem {
+  id: string;
+  title: string;
+  url: string;
+  published_at: string;
+  source_type: string;
+  city: string;
+}
 interface GeoRegion {
   region_code: string;
   region_name: string;
@@ -22,6 +30,8 @@ interface GeoRegion {
   sources: number;
   share: number;
   cities: string[];
+  items?: GeoItem[];
+  item_total?: number;
 }
 interface GeoPayload {
   regions: GeoRegion[];
@@ -32,6 +42,17 @@ interface GeoPayload {
 }
 
 type Metric = "independent_sources" | "sources" | "share";
+
+const sourceTypeLabels: Record<string, string> = {
+  official: "官方发布",
+  company: "企业披露",
+  mainstream_media: "主流媒体",
+  self_media: "自媒体",
+  forum: "论坛",
+  social_media: "社交媒体",
+  user_material: "用户提供",
+  unknown: "来源未分类",
+};
 
 const METRICS: { id: Metric; label: string }[] = [
   { id: "independent_sources", label: "独立源数" },
@@ -56,6 +77,7 @@ export function ReportGeoMap({ taskId, versionId }: { taskId: string; versionId?
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [metric, setMetric] = useState<Metric>("independent_sources");
+  const [selected, setSelected] = useState<string>("");
   const mainRef = useRef<HTMLDivElement>(null);
   const seaRef = useRef<HTMLDivElement>(null);
 
@@ -64,7 +86,7 @@ export function ReportGeoMap({ taskId, versionId }: { taskId: string; versionId?
     setLoading(true); setError("");
     const versionQuery = versionId ? `?version_id=${encodeURIComponent(versionId)}` : "";
     apiRequest<GeoPayload>(`/api/reports/${encodeURIComponent(taskId)}/geo${versionQuery}`)
-      .then((body) => { if (!cancelled) setPayload(body); })
+      .then((body) => { if (!cancelled) { setPayload(body); setSelected(""); } })
       .catch((reason) => { if (!cancelled) setError(reason instanceof Error ? reason.message : "地域聚合读取失败。"); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -107,6 +129,10 @@ export function ReportGeoMap({ taskId, versionId }: { taskId: string; versionId?
       };
 
       mainChart = echarts.init(mainRef.current);
+      mainChart.on("click", (params: { name?: string }) => {
+        const name = params?.name;
+        if (name) setSelected((current) => (current === name ? "" : name));
+      });
       mainChart.setOption({
         tooltip,
         visualMap: { ...visual, orient: "vertical" },
@@ -152,6 +178,9 @@ export function ReportGeoMap({ taskId, versionId }: { taskId: string; versionId?
 
   const lowCoverage = Boolean(payload && payload.coverage > 0 && payload.coverage < 0.5);
   const empty = Boolean(payload && (!payload.regions || payload.regions.length === 0));
+  const topRegions = (payload?.regions ?? []).slice(0, 5);
+  const selectedRegion = (payload?.regions ?? []).find((region) => region.region_name === selected);
+  const hiddenItems = selectedRegion ? Math.max(0, (selectedRegion.item_total ?? 0) - (selectedRegion.items ?? []).length) : 0;
 
   return <section className="report-geo" aria-label="地域分布图">
     <header className="report-geo__bar">
@@ -185,7 +214,36 @@ export function ReportGeoMap({ taskId, versionId }: { taskId: string; versionId?
                 <span className="report-geo__sea-title">南海诸岛</span>
               </div>
             </div>
-            <p className="report-geo__note">示意图：按省级聚合的来源地域分布（市级明细见数据表「地域」列）；底图为开源行政区划数据，非审图号标准地图，正式出版请使用自然资源部标准地图。</p>
+            <p className="report-geo__note">点击省份查看该省来源条目（同组转载已去重）。示意图：按省级聚合的来源地域分布（市级明细见数据表「地域」列）；底图为开源行政区划数据，非审图号标准地图，正式出版请使用自然资源部标准地图。</p>
+            {topRegions.length > 0 && <ul className="report-geo__top" aria-label="省份排行">
+              {topRegions.map((region) => (
+                <li key={region.region_code}>
+                  <button type="button" aria-pressed={selected === region.region_name} onClick={() => setSelected((current) => (current === region.region_name ? "" : region.region_name))}>
+                    <span className="report-geo__top-name">{region.region_name}</span>
+                    <span className="report-geo__top-bar"><i style={{ width: `${Math.max(4, Math.round(region.share * 100))}%` }} /></span>
+                    <span className="report-geo__top-value">{region.independent_sources} 源 · {Math.round(region.share * 100)}%</span>
+                  </button>
+                </li>
+              ))}
+            </ul>}
+            {selectedRegion && <div className="report-geo__detail" role="region" aria-label={`${selectedRegion.region_name}来源条目`}>
+              <header>
+                <div>
+                  <strong>{selectedRegion.region_name}</strong>
+                  <span>{selectedRegion.independent_sources} 个独立源 · {selectedRegion.sources} 条来源 · 份额 {Math.round(selectedRegion.share * 100)}%{selectedRegion.cities.length ? ` · 涉及 ${selectedRegion.cities.slice(0, 6).join("、")}${selectedRegion.cities.length > 6 ? " 等" : ""}` : ""}</span>
+                </div>
+                <button type="button" aria-label="关闭省份详情" onClick={() => setSelected("")}><X size={15} /></button>
+              </header>
+              {(selectedRegion.items ?? []).length ? <ul className="report-geo__items">
+                {(selectedRegion.items ?? []).map((item) => (
+                  <li key={item.id || item.title}>
+                    {item.url ? <a href={item.url} target="_blank" rel="noreferrer"><ExternalLink size={12} /><span><strong>{item.title}</strong><small>{[item.published_at || "时间未知", sourceTypeLabels[item.source_type] ?? item.source_type, item.city].filter(Boolean).join(" · ")}</small></span></a>
+                      : <div><span><strong>{item.title}</strong><small>{[item.published_at || "时间未知", sourceTypeLabels[item.source_type] ?? item.source_type, item.city].filter(Boolean).join(" · ")}</small></span></div>}
+                  </li>
+                ))}
+              </ul> : <p className="report-geo__detail-empty">该省没有可展示的代表条目。</p>}
+              {hiddenItems > 0 && <p className="report-geo__detail-more">另有 {hiddenItems} 条来源未列出（已按同组转载去重，完整清单见数据表）。</p>}
+            </div>}
           </div>
     )}
   </section>;

@@ -8,6 +8,7 @@ import { useAppStore } from "@/lib/store";
 import { apiRequest } from "@/lib/api";
 import { filterProjects, filterReports } from "@/lib/view-models";
 import { AnalysisNetwork } from "@/components/analysis-network";
+import { ReportGeoMap } from "@/components/report-geo-map";
 import { ReportReader } from "@/components/report-reader";
 import { ProjectMonitorPanel } from "@/components/project-monitor-panel";
 import { LlmConnectionSettings } from "@/components/llm-connection-settings";
@@ -218,13 +219,20 @@ export function InterestIndexScreen() {
 
 export function InterestAnalysisScreen({ reportId }: { reportId: string }) {
   const { state, hydrated } = useAppStore();
+  const [view, setView] = useState<"network" | "geo">("network");
   const report = state.reports.find((item) => item.id === reportId);
   if (!report) return hydrated ? <EmptyState eyebrow="未找到关系网络" title="无法打开利益拆解" detail="请先从分析任务生成报告，再进入对应的关系网络。" href="/dashboard" action="返回工作台" /> : null;
   const task = state.tasks.find((item) => item.id === report.taskId);
   const materials = state.materials.filter((material) => task?.materialIds.includes(material.id));
   return <>
     <PageHeading eyebrow={`报告视图 / ${typeLabel(report.type)}`} title="利益拆解">把"{report.title}"切换为结构化的主体、利益与关系拆解。</PageHeading>
-    <AnalysisNetwork taskId={report.taskId} markdown={report.markdown} materials={materials} research={report.research} researchStatus={report.researchStatus} />
+    <div className="interest-view-tabs" role="tablist" aria-label="拆解视图">
+      <button type="button" role="tab" aria-selected={view === "network"} className={view === "network" ? "data-tab data-tab--active" : "data-tab"} onClick={() => setView("network")}>关系网络</button>
+      <button type="button" role="tab" aria-selected={view === "geo"} className={view === "geo" ? "data-tab data-tab--active" : "data-tab"} onClick={() => setView("geo")}>地域分布</button>
+    </div>
+    {view === "geo"
+      ? <ReportGeoMap taskId={report.taskId} />
+      : <AnalysisNetwork taskId={report.taskId} markdown={report.markdown} materials={materials} research={report.research} researchStatus={report.researchStatus} />}
   </>;
 }
 

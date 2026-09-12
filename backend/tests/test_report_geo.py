@@ -32,6 +32,25 @@ def test_geo_aggregation_merges_independence_groups_and_city_to_province():
     assert out["polarity"] == []
     # 排序：独立源数降序
     assert out["regions"][0]["independent_sources"] >= out["regions"][-1]["independent_sources"]
+    # 点省浮层：同组转载只留一条代表条目，条目带城市与链接
+    assert len(gd["items"]) == 1
+    assert gd["items"][0]["title"] == "惠州市奖补措施印发"
+    assert gd["items"][0]["city"] == "惠州市"
+    assert gd["item_total"] == 1
+
+
+def test_geo_items_cap_and_total():
+    from app.report_tables import _GEO_ITEMS_PER_REGION, geo_aggregation
+
+    sources = [
+        {"id": f"s{i}", "title": f"广东省报道 {i}", "independence_group": f"g{i}", "url": f"https://x/{i}"}
+        for i in range(_GEO_ITEMS_PER_REGION + 4)
+    ]
+    out = geo_aggregation({"sources": sources})
+    gd = out["regions"][0]
+    assert gd["item_total"] == _GEO_ITEMS_PER_REGION + 4
+    assert len(gd["items"]) == _GEO_ITEMS_PER_REGION
+    assert all(item["url"] for item in gd["items"])
 
 
 def test_geo_aggregation_empty_ledger():
