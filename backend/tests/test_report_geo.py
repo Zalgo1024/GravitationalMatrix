@@ -56,8 +56,35 @@ def test_geo_items_cap_and_total():
 def test_geo_aggregation_empty_ledger():
     from app.report_tables import geo_aggregation
 
-    assert geo_aggregation({}) == {"regions": [], "coverage": 0.0, "polarity": []}
+    assert geo_aggregation({}) == {"regions": [], "coverage": 0.0, "polarity": [], "timeline": []}
     assert geo_aggregation(None)["regions"] == []
+
+
+def test_geo_timeline_buckets_by_month_and_city_groups_counted():
+    from app.report_tables import geo_aggregation
+
+    ledger = {
+        "sources": [
+            # 广东两个独立源：8 月一票、9 月一票；惠州/广州各一票
+            {"id": "s1", "title": "惠州市奖补措施印发", "independence_group": "gov.cn", "published_at": "2026-08-12"},
+            {"id": "s2", "title": "广州市企业连夜准备材料", "independence_group": "media.com", "published_at": "2026-09-02"},
+            # 浙江独立源，无日期 → 不进时间轴
+            {"id": "s3", "title": "杭州市企业跟进申请", "independence_group": "zj.com"},
+        ],
+    }
+    out = geo_aggregation(ledger)
+
+    gd = next(r for r in out["regions"] if r["region_name"] == "广东省")
+    assert {"name": "惠州市", "groups": 1} in gd["city_groups"]
+    assert {"name": "广州市", "groups": 1} in gd["city_groups"]
+    assert gd["cities"] == ["广州市", "惠州市"]  # 同票按名称序
+
+    months = {entry["month"]: entry for entry in out["timeline"]}
+    assert set(months) == {"2026-08", "2026-09"}
+    assert months["2026-08"]["regions"] == [{"region_code": "440000", "region_name": "广东省", "independent_sources": 1}]
+    assert months["2026-09"]["regions"][0]["region_code"] == "440000"
+    # 无日期的浙江组不进任何月份桶
+    assert all(entry["regions"][0]["region_code"] != "330000" for entry in out["timeline"] if entry["regions"])
 
 
 def test_geo_endpoint_returns_aggregation(client):

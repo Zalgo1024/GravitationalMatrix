@@ -11,6 +11,8 @@ ReportVersion.research_snapshot（研究账本 dict）**纯派生**，零 LLM �
 """
 from __future__ import annotations
 
+import re
+
 from app.connectors.regions import recognize_region_detailed
 
 _TABLE_DEFS: dict[str, dict] = {
@@ -208,7 +210,10 @@ def geo_aggregation(ledger: dict) -> dict:
     - coverage：有地域的独立源数 / 全部独立源数（过低时前端灰显提示）；
     - polarity：立场极性聚合（初版空数组，等主体 stance 打通后填充）；
     - items：该省的代表来源条目（同组转载已去重，最多 _GEO_ITEMS_PER_REGION 条），
-      供点省浮层直接展示；item_total 是该省实际条目总数，超出部分前端提示省略。
+      供点省浮层直接展示；item_total 是该省实际条目总数，超出部分前端提示省略；
+    - city_groups：市级独立源组计数（市级下钻着色用），cities 仍是市名数组（兼容）；
+    - timeline：按月分桶的省级独立源累计口径原料（独立源组按代表条目月份归月，
+      无日期的组不进时间轴，前端负责做累计播放）。
     """
     if not isinstance(ledger, dict):
         return {"regions": [], "coverage": 0.0, "polarity": []}
@@ -226,7 +231,7 @@ def geo_aggregation(ledger: dict) -> dict:
         province_code = str(detail.get("region_code") or "")
         province_name = str(detail.get("region_name") or "")
         city_name = str(detail.get("city_name") or "")
-        group = groups.setdefault(key, {"province": (province_code, province_name), "cities": set(), "count": 0, "sample": None, "city": ""})
+        group = groups.setdefault(key, {"province": (province_code, province_name), "city": "", "city_seen": set(), "count": 0, "sample": None})
         group["count"] += 1
         # 同组转载只保留一条代表条目，避免点开一个省看到十条重复标题
         if group["sample"] is None:
@@ -236,12 +241,13 @@ def geo_aggregation(ledger: dict) -> dict:
             # 组内取第一个命中的省（同组转载地域一致）；无命中的组保持未识别
             if not group["province"][0]:
                 group["province"] = (province_code, province_name)
-            if city_name and city_name not in group["cities"]:
-                group["cities"].add(city_name)
+            if city_name:
+                group["city_seen"].add(city_name)
 
     by_province: dict[str, dict] = {}
     total_indep = 0
     located_indep = 0
+    monthly: dict[str, dict[str, int]] = {}
     for group in groups.values():
         total_indep += 1
         pcode, pname = group["province"]
@@ -250,11 +256,12 @@ def geo_aggregation(ledger: dict) -> dict:
         located_indep += 1
         bucket = by_province.setdefault(
             pcode,
-            {"region_code": pcode, "region_name": pname, "independent_sources": 0, "sources": 0, "cities": set(), "items": []},
+            {"region_code": pcode, "region_name": pname, "independent_sources": 0, "sources": 0, "city_groups": {}, "items": []},
         )
         bucket["independent_sources"] += 1
         bucket["sources"] += group["count"]
-        bucket["cities"].update(group["cities"])
+        for city in group["city_seen"]:
+            bucket["city_groups"][city] = bucket["city_groups"].get(city, 0) + 1
         sample = group.get("sample")
         if isinstance(sample, dict):
             bucket["items"].append({
@@ -265,10 +272,18 @@ def geo_aggregation(ledger: dict) -> dict:
                 "source_type": str(sample.get("source_type") or "unknown"),
                 "city": str(group.get("city") or ""),
             })
+            month_match = re.match(r"^(\d{4}-\d{2})", str(sample.get("published_at") or ""))
+            if month_match:
+                monthly.setdefault(month_match.group(1), {}).setdefault(pcode, 0)
+                monthly[month_match.group(1)][pcode] += 1
 
     regions = []
     for bucket in by_province.values():
         items = sorted(bucket["items"], key=lambda item: (item["published_at"] or "9999"), reverse=False)
+        city_groups = sorted(
+            ({"name": name, "groups": count} for name, count in bucket["city_groups"].items()),
+            key=lambda entry: (-entry["groups"], entry["name"]),
+        )
         regions.append(
             {
                 "region_code": bucket["region_code"],
@@ -276,17 +291,30 @@ def geo_aggregation(ledger: dict) -> dict:
                 "independent_sources": bucket["independent_sources"],
                 "sources": bucket["sources"],
                 "share": round(bucket["independent_sources"] / located_indep, 3) if located_indep else 0.0,
-                "cities": sorted(bucket["cities"]),
+                "cities": [entry["name"] for entry in city_groups],
+                "city_groups": city_groups,
                 # 点省浮层用：只回代表条目（同组转载已去重），前端按 need 再要全量
                 "items": items[:_GEO_ITEMS_PER_REGION],
                 "item_total": len(items),
             }
         )
     regions.sort(key=lambda r: (-r["independent_sources"], r["region_name"]))
+    name_by_code = {bucket["region_code"]: bucket["region_name"] for bucket in by_province.values()}
+    timeline = [
+        {
+            "month": month,
+            "regions": [
+                {"region_code": code, "region_name": name_by_code.get(code, code), "independent_sources": count}
+                for code, count in sorted(codes.items(), key=lambda item: (-item[1], item[0]))
+            ],
+        }
+        for month, codes in sorted(monthly.items())
+    ]
     return {
         "regions": regions,
         "coverage": round(located_indep / total_indep, 3) if total_indep else 0.0,
         "polarity": [],
+        "timeline": timeline,
     }
 
 
