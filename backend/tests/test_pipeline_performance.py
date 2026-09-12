@@ -17,7 +17,7 @@ def test_export_retry_does_not_repeat_report_generation(monkeypatch, sample_even
         calls["generate"] += 1
         return original_generate(input_text, title)
 
-    def flaky_export(markdown, title=None, output_dir=None, slug=None):
+    def flaky_export(markdown, title=None, output_dir=None, slug=None, data_tables=None):
         calls["export"] += 1
         if calls["export"] == 1:
             raise OSError("docx is temporarily locked")

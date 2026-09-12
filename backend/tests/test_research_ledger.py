@@ -182,7 +182,7 @@ def test_source_intelligence_rates_sources_and_collapses_duplicate_evidence():
         }
     )
 
-    assert ledger.schema_version == "1.2"
+    assert ledger.schema_version == "1.3"
     assert ledger.sources[0].source_type == "official"
     assert ledger.sources[0].quality_tier == "A"
     assert ledger.sources[1].duplicate_of == "s1"
@@ -369,7 +369,7 @@ def test_p2_downgrades_unsupported_analogues_counterfactuals_and_numbers():
         }
     )
 
-    assert ledger.schema_version == "1.2"
+    assert ledger.schema_version == "1.3"
     assert ledger.analogues[0].confidence == "medium"
     assert ledger.analogues[1].confidence == "low"
     assert ledger.analogues[1].comparability == "unknown"
@@ -428,3 +428,130 @@ def test_string_list_fields_are_not_split_into_individual_characters():
     )
 
     assert ledger.claims[0].confidence_reasons == ["直接来自用户提供的材料。"]
+
+
+def test_narratives_share_requires_basis_and_evidence_or_downgrades():
+    """账本 1.3：叙事份额——share 必须带口径与来源/证据支撑，否则降级为定性。"""
+    ledger = normalize_research_ledger(
+        {
+            "sources": [
+                {"id": "s1", "title": "报道A", "url": "https://example.com/a"},
+            ],
+            "nodes": [{"id": "n1", "label": "阵营A"}],
+            "narratives": [
+                # 合法：share + 口径 + 来源
+                {
+                    "id": "nar1",
+                    "name": "当事人受害者叙事",
+                    "stance": "supportive",
+                    "share": 0.45,
+                    "share_basis": "样本 20 条来源中 9 条持此叙事",
+                    "source_ids": ["s1"],
+                    "evidence_ids": ["s1"],
+                    "confidence": "medium",
+                },
+                # 越界：share=45 → 降级 None
+                {
+                    "id": "nar2",
+                    "name": "平台无罪叙事",
+                    "share": 45,
+                    "share_basis": "按互动量",
+                    "source_ids": ["s1"],
+                },
+                # 缺口径 → 降级 None
+                {
+                    "id": "nar3",
+                    "name": "阴谋论叙事",
+                    "share": 0.3,
+                },
+                # 有份额有口径但零来源零证据 → 降级 None + confidence=low
+                {
+                    "id": "nar4",
+                    "name": "无支撑叙事",
+                    "share": 0.2,
+                    "share_basis": "拍脑袋",
+                },
+                # 纯定性（无 share）：合法，保留
+                {
+                    "id": "nar5",
+                    "name": "沉默方视角",
+                    "stance": "neutral",
+                },
+            ],
+        }
+    )
+
+    assert ledger.schema_version == "1.3"
+    # 排序：有份额在前（份额降序），其余按 id 稳定排序
+    assert [n.id for n in ledger.narratives] == ["nar1", "nar2", "nar3", "nar4", "nar5"]
+    assert ledger.narratives[0].share == 0.45
+    assert ledger.narratives[0].share_basis.startswith("样本 20 条来源中 9 条")
+    assert ledger.narratives[4].id == "nar5" and ledger.narratives[4].share is None
+    downgraded = {n.id: n for n in ledger.narratives}
+    assert downgraded["nar2"].share is None
+    assert any("0~1" in r for r in downgraded["nar2"].confidence_reasons)
+    assert downgraded["nar3"].share is None
+    assert any("口径" in r for r in downgraded["nar3"].confidence_reasons)
+    assert downgraded["nar4"].share is None
+    assert downgraded["nar4"].confidence == "low"
+    assert any("来源/证据支撑" in r for r in downgraded["nar4"].confidence_reasons)
+    assert ledger.metrics.narrative_count == 5
+
+
+def test_policy_clauses_no_evidence_downgrades_confidence_and_keeps_order():
+    """账本 1.3：政策条款——无证据 confidence=low；条款保持 payload 原序。"""
+    ledger = normalize_research_ledger(
+        {
+            "sources": [
+                {"id": "s1", "title": "市政府文件", "url": "https://example.com/p"},
+            ],
+            "policy_clauses": [
+                {
+                    "id": "pc2",
+                    "clause_no": "第二条",
+                    "title": "奖补资金申领",
+                    "content_digest": "符合条件的企业可申领最高 50 万元奖补。",
+                    "target_groups": ["中小企业"],
+                    "interest_change": "benefit",
+                    "region_level": "city",
+                    "effective_at": "2026-09-01",
+                    "evidence_ids": ["s1"],
+                    "confidence": "high",
+                },
+                {
+                    "id": "pc1",
+                    "clause_no": "第一条",
+                    "title": "适用范围",
+                    "content_digest": "本措施适用于本市行政区域内注册企业。",
+                    "region_level": "city",
+                    "evidence_ids": [],
+                    "confidence": "medium",
+                },
+            ],
+        }
+    )
+
+    assert ledger.metrics.policy_clause_count == 2
+    # 原序：pc2 在前（payload 原序，不按 id 重排）
+    assert [c.id for c in ledger.policy_clauses] == ["pc2", "pc1"]
+    assert ledger.policy_clauses[0].confidence == "high"
+    assert ledger.policy_clauses[0].interest_change == "benefit"
+    assert ledger.policy_clauses[1].confidence == "low"
+    assert ledger.policy_clauses[1].effective_at is None
+
+
+def test_ledger_1_2_payload_without_narratives_still_loads():
+    """旧版 1.2 快照（无 narratives/policy_clauses 字段）零迁移直接空态。"""
+    ledger = normalize_research_ledger(
+        {
+            "schema_version": "1.2",
+            "sources": [{"id": "s1", "title": "旧快照", "url": "https://example.com/old"}],
+            "claims": [],
+            "relations": [],
+        }
+    )
+
+    assert ledger.narratives == []
+    assert ledger.policy_clauses == []
+    assert ledger.metrics.narrative_count == 0
+    assert ledger.metrics.policy_clause_count == 0

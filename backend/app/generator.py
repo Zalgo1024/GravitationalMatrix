@@ -16,6 +16,7 @@ import urllib.parse
 
 from app.prompt_builder import build_system_prompt
 from app.engine_bridge import export_report
+from app.report_tables import word_data_tables
 from app import rule_engine
 from app.report_quality import (
     ReportQualityError,
@@ -679,7 +680,7 @@ class ReportGenerator:
             "区分 fact、source_view、inference、user_input；没有直接证据的判断必须标为 inference。"
             "置信度只能是 high、medium、low、unknown，不得编造百分比。"
             "输出字段：sources, claims, nodes, relations, timeline, gaps, analogues, "
-            "counterfactuals, quantitative_observations。"
+            "counterfactuals, quantitative_observations, narratives, policy_clauses。"
             "claim 包含 id,text,claim_type,significance,confidence,confidence_reasons,evidence_ids,"
             "counter_evidence_ids,section。"
             "node 包含 id,label,aliases,role,interests,stance,weight,confidence,evidence_ids,"
@@ -702,6 +703,15 @@ class ReportGenerator:
             "period_end,scope,methodology,formula,evidence_ids,status,caveats,confidence；"
             "status 只能是 observed、derived、unknown、conflicted。外部观测值必须绑定来源，"
             "派生值必须同时绑定来源并给出可复算公式；无法获得时 value 为 null、status 为 unknown。"
+            "narrative 包含 id,name,summary,stance,share,share_basis,actor_ids,source_ids,evidence_ids,"
+            "confidence；stance 只能是 supportive、opposing、neutral、mixed、unknown；"
+            "share 只能是 0 到 1 且必须同时给出 share_basis 计算口径，没有可核验依据时 share 为 null、"
+            "只做定性描述；仅舆情报告且来源足以支撑时产出，否则返回空数组。"
+            "policy_clause 包含 id,clause_no,title,content_digest,target_groups,interest_change,"
+            "region_level,effective_at,claim_ids,evidence_ids,confidence；"
+            "interest_change 只能是 benefit、loss、neutral、mixed、unknown；"
+            "region_level 只能是 national、province、city、district、unknown；"
+            "仅政策报告且来源含条款原文时逐条产出，否则返回空数组。"
             "主体、关系、时间事件没有证据时必须降低置信度，不得根据常识补造。"
         )
         user = (
@@ -781,13 +791,21 @@ class ReportGenerator:
         title: str | None = None,
         output_dir: str | None = None,
         slug: str | None = None,
+        data_tables: list[dict] | None = None,
     ) -> dict:
         """导出 Word/PDF（调用域引擎），并归一 PDF 可用状态。
 
         对应进度链第 6 步「输出分析结果」里程碑。
+        data_tables：可选 Word 附表 [{name, columns, rows}]（F15 关键数据表），None 时输出不变。
         返回域引擎导出结果（含 ``pdf_available`` / ``pdf_reason`` 修正），不含原始 Markdown。
         """
-        exp = export_report(title or "未命名报告", markdown, output_dir=output_dir, slug=slug)
+        exp = export_report(
+            title or "未命名报告",
+            markdown,
+            output_dir=output_dir,
+            slug=slug,
+            data_tables=data_tables,
+        )
         # 归一 PDF：域引擎在转换失败时也会返回「幽灵路径」（文件并不存在）。
         # 此处以真实文件存在性为准：存在才保留 pdf 路径并标 pdf_available=true；
         # 否则去掉 pdf 字段、标 pdf_available=false，由前端明确提示「PDF 待配置」。
@@ -871,7 +889,9 @@ class ReportGenerator:
         exp = None
         for attempt in range(2):
             try:
-                exp = self.export(md, title, output_dir, slug)
+                # F15：把研究账本派生的关键数据表（来源/主体/时间线或条款）作为 Word 附表
+                data_tables = word_data_tables(research.model_dump(), self.analysis_type)
+                exp = self.export(md, title, output_dir, slug, data_tables=data_tables)
                 break
             except Exception:  # noqa: BLE001
                 if attempt == 0:

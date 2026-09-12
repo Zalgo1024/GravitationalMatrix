@@ -125,6 +125,50 @@ class ResearchTimelineEvent(BaseModel):
     turning_point: bool = False
 
 
+class ResearchNarrative(BaseModel):
+    """叙事份额条目（F15，账本 1.3 新增；舆情报告可选产出）。
+
+    share 是 0~1 的份额值：必须有可核验口径（share_basis）与来源/证据支撑，
+    否则 normalize 阶段降级为 None（定性叙事），绝不编造百分比。
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: str
+    name: str
+    summary: str = ""
+    stance: Literal["supportive", "opposing", "neutral", "mixed", "unknown"] = "unknown"
+    share: float | None = None
+    share_basis: str = ""
+    actor_ids: list[str] = Field(default_factory=list)
+    source_ids: list[str] = Field(default_factory=list)
+    evidence_ids: list[str] = Field(default_factory=list)
+    confidence: Confidence = "unknown"
+    confidence_reasons: list[str] = Field(default_factory=list)
+
+
+class ResearchPolicyClause(BaseModel):
+    """政策条款拆解条目（F15，账本 1.3 新增；政策报告可选产出）。
+
+    逐条款记录条款号/影响对象/利益变化/地域层级/生效时间，全部绑定证据；
+    来源不含条款原文时不应产出该条目。
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: str
+    clause_no: str = ""
+    title: str
+    content_digest: str = ""
+    target_groups: list[str] = Field(default_factory=list)
+    interest_change: Literal["benefit", "loss", "neutral", "mixed", "unknown"] = "unknown"
+    region_level: Literal["national", "province", "city", "district", "unknown"] = "unknown"
+    effective_at: str | None = None
+    claim_ids: list[str] = Field(default_factory=list)
+    evidence_ids: list[str] = Field(default_factory=list)
+    confidence: Confidence = "unknown"
+
+
 class ResearchGap(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
@@ -215,12 +259,14 @@ class ResearchMetrics(BaseModel):
     quantitative_observation_count: int = 0
     sourced_quantitative_rate: float = 0.0
     unknown_quantitative_count: int = 0
+    narrative_count: int = 0
+    policy_clause_count: int = 0
 
 
 class ResearchLedger(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
-    schema_version: str = "1.2"
+    schema_version: str = "1.3"
     # ``fallback`` means the generation path degraded. ``no_evidence`` means
     # the report was generated normally but no verifiable source was supplied.
     # ``extraction_failed`` means sources existed but ledger extraction failed.
@@ -234,6 +280,8 @@ class ResearchLedger(BaseModel):
     analogues: list[ResearchAnalogue] = Field(default_factory=list)
     counterfactuals: list[ResearchCounterfactual] = Field(default_factory=list)
     quantitative_observations: list[QuantitativeObservation] = Field(default_factory=list)
+    narratives: list[ResearchNarrative] = Field(default_factory=list)
+    policy_clauses: list[ResearchPolicyClause] = Field(default_factory=list)
     metrics: ResearchMetrics = Field(default_factory=ResearchMetrics)
     warnings: list[str] = Field(default_factory=list)
 
@@ -318,6 +366,8 @@ def _metrics(
     analogues: list[ResearchAnalogue],
     counterfactuals: list[ResearchCounterfactual],
     quantitative_observations: list[QuantitativeObservation],
+    narratives: list[ResearchNarrative],
+    policy_clauses: list[ResearchPolicyClause],
 ) -> ResearchMetrics:
     key_claims = [claim for claim in claims if claim.significance == "key"]
     supported_key = [claim for claim in key_claims if claim.evidence_ids]
@@ -360,6 +410,8 @@ def _metrics(
             else 0.0
         ),
         unknown_quantitative_count=sum(1 for item in quantitative_observations if item.status == "unknown"),
+        narrative_count=len(narratives),
+        policy_clause_count=len(policy_clauses),
     )
 
 
@@ -783,8 +835,89 @@ def normalize_research_ledger(payload: dict) -> ResearchLedger:
         if item.id not in existing_quant_ids:
             quantitative_observations.append(item)
 
+    # —— 账本 1.3：叙事份额（舆情可选）——
+    # 降级铁律：share 必须有口径与来源/证据支撑，否则降为定性（None），不编造百分比。
+    narratives: list[ResearchNarrative] = []
+    for index, raw in enumerate(payload.get("narratives") or [], 1):
+        if not isinstance(raw, dict) or not str(raw.get("name") or "").strip():
+            continue
+        evidence_ids = _unique_strings(raw.get("evidence_ids"), source_ids)
+        narrative_source_ids = _unique_strings(raw.get("source_ids"), source_ids)
+        share = raw.get("share")
+        try:
+            share_value = float(share) if share is not None else None
+        except (TypeError, ValueError):
+            share_value = None
+        share_basis = str(raw.get("share_basis") or "").strip()
+        reasons: list[str] = []
+        confidence = _safe_choice(raw.get("confidence"), {"high", "medium", "low", "unknown"}, "unknown")
+        if share_value is not None and not (0.0 <= share_value <= 1.0):
+            share_value = None
+            reasons.append("份额超出 0~1 范围，已降级为定性描述")
+        if share_value is not None and not share_basis:
+            share_value = None
+            reasons.append("份额缺少计算口径，已降级为定性描述")
+        if share_value is not None and not evidence_ids and not narrative_source_ids:
+            share_value = None
+            confidence = "low"
+            reasons.append("份额缺少来源/证据支撑，已降级为定性描述")
+        narratives.append(
+            ResearchNarrative(
+                id=str(raw.get("id") or f"nar{index}"),
+                name=str(raw.get("name")).strip(),
+                summary=str(raw.get("summary") or "").strip(),
+                stance=_safe_choice(
+                    raw.get("stance"),
+                    {"supportive", "opposing", "neutral", "mixed", "unknown"},
+                    "unknown",
+                ),
+                share=share_value,
+                share_basis=share_basis,
+                actor_ids=_unique_strings(raw.get("actor_ids"), node_ids),
+                source_ids=narrative_source_ids,
+                evidence_ids=evidence_ids,
+                confidence=confidence,
+                confidence_reasons=reasons,
+            )
+        )
+    narratives.sort(key=lambda item: (item.share is None, -(item.share or 0.0), item.id))
+
+    # —— 账本 1.3：政策条款拆解（政策可选）——
+    policy_clauses: list[ResearchPolicyClause] = []
+    for index, raw in enumerate(payload.get("policy_clauses") or [], 1):
+        if not isinstance(raw, dict) or not str(raw.get("title") or "").strip():
+            continue
+        evidence_ids = _unique_strings(raw.get("evidence_ids"), source_ids)
+        clause_confidence = _safe_choice(raw.get("confidence"), {"high", "medium", "low", "unknown"}, "unknown")
+        if not evidence_ids:
+            clause_confidence = "low"
+        policy_clauses.append(
+            ResearchPolicyClause(
+                id=str(raw.get("id") or f"pc{index}"),
+                clause_no=str(raw.get("clause_no") or "").strip(),
+                title=str(raw.get("title")).strip(),
+                content_digest=str(raw.get("content_digest") or "").strip(),
+                target_groups=_unique_strings(raw.get("target_groups")),
+                interest_change=_safe_choice(
+                    raw.get("interest_change"),
+                    {"benefit", "loss", "neutral", "mixed", "unknown"},
+                    "unknown",
+                ),
+                region_level=_safe_choice(
+                    raw.get("region_level"),
+                    {"national", "province", "city", "district", "unknown"},
+                    "unknown",
+                ),
+                effective_at=str(raw.get("effective_at") or "").strip() or None,
+                claim_ids=_unique_strings(raw.get("claim_ids"), claim_ids),
+                evidence_ids=evidence_ids,
+                confidence=clause_confidence,
+            )
+        )
+    # 条款保持 payload 原序（条款号有天然顺序，不重排）
+
     return ResearchLedger(
-        schema_version="1.2",
+        schema_version="1.3",
         status=(
             payload.get("status")
             if payload.get("status") in {"fallback", "no_evidence", "extraction_failed"}
@@ -799,6 +932,8 @@ def normalize_research_ledger(payload: dict) -> ResearchLedger:
         analogues=analogues,
         counterfactuals=counterfactuals,
         quantitative_observations=quantitative_observations,
+        narratives=narratives,
+        policy_clauses=policy_clauses,
         metrics=_metrics(
             sources,
             claims,
@@ -808,6 +943,8 @@ def normalize_research_ledger(payload: dict) -> ResearchLedger:
             analogues,
             counterfactuals,
             quantitative_observations,
+            narratives,
+            policy_clauses,
         ),
         warnings=_unique_strings(payload.get("warnings")),
     )

@@ -131,6 +131,7 @@ class CaseAnalysisEngine:
         slug: Optional[str] = None,
         overwrite: bool = False,
         tone: str = "neutral",
+        data_tables: Optional[list] = None,
     ) -> dict[str, str]:
         """从分析正文导出 Word + PDF 报告。
 
@@ -142,6 +143,8 @@ class CaseAnalysisEngine:
                 时间戳目录，始终只保留 1 份，避免反复运行堆积多份。
             tone: 分析基调。「neutral」=客观中立（默认）；「provocative」=煽动性。
                 仅作为元数据与封面标注，不改变报告结构；具体行文由撰写者落实。
+            data_tables: 可选 Word 附表 [{name, columns, rows}]（F15 关键数据表）。
+                None/空列表时不渲染，输出与既有逐字一致。
 
         Returns:
             {
@@ -172,7 +175,7 @@ class CaseAnalysisEngine:
         os.makedirs(folder, exist_ok=True)
 
         # 3. 生成 Word
-        word_path = self._render_docx(report, folder, tone=tone)
+        word_path = self._render_docx(report, folder, tone=tone, data_tables=data_tables)
 
         # 4. 转换 PDF
         pdf_path = self._convert_to_pdf(word_path, folder)
@@ -223,7 +226,8 @@ class CaseAnalysisEngine:
 
     # ── 内部方法 ──────────────────────────────────────────────
 
-    def _render_docx(self, report: ParsedReport, folder: str, tone: str = "neutral") -> str:
+    def _render_docx(self, report: ParsedReport, folder: str, tone: str = "neutral",
+                     data_tables: Optional[list] = None) -> str:
         """渲染 Word 文档，保存网络图到输出目录。"""
         from docx_renderer import render_docx
 
@@ -235,6 +239,7 @@ class CaseAnalysisEngine:
             output_folder=folder,
             diagram_collector=self._diagrams,
             tone=tone,
+            data_tables=data_tables,
         )
         return output_path
 

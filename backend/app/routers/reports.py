@@ -24,6 +24,11 @@ from app.auth import get_current_user, task_owned
 from app.db import SessionLocal
 from app.generator import ReportGenerator
 from app.models import Project, ReportVersion, Task
+from app.report_tables import ledger_rows as _ledger_rows
+from app.report_tables import table_applicable as _table_applicable
+from app.report_tables import table_columns as _table_columns
+from app.report_tables import table_exists as _table_exists
+from app.report_tables import table_name as _table_name
 from app.report_version_service import (
     create_report_version,
     ensure_original_version,
@@ -488,84 +493,9 @@ def get_report_version(task_id: str, vid: str, current: dict = Depends(get_curre
 
 
 # ---------------------------------------------------------------------------
-# F15：结构化数据表（来源证据 / 主体清单 / 关系清单）
-# 纯派生：从版本绑定的 research_snapshot 聚合，零 LLM 调用；CSV 为 utf-8-sig。
+# F15：结构化数据表（六张）——派生逻辑已抽到 app/report_tables.py 共享，
+# 供本路由（JSON/CSV）与 Word 附表（generator）/ 地图聚合（/geo）复用。
 # ---------------------------------------------------------------------------
-
-_TABLE_DEFS: dict[str, dict] = {
-    "sources": {
-        "name": "来源证据表",
-        "columns": ["编号", "标题", "链接", "来源类型", "质量档", "发布时间", "独立源组", "重复判定", "摘要"],
-    },
-    "subjects": {
-        "name": "主体清单表",
-        "columns": ["编号", "主体", "角色", "立场", "权重", "置信度", "证据数", "利益诉求"],
-    },
-    "relations": {
-        "name": "关系清单表",
-        "columns": ["源主体", "目标主体", "关系描述", "极性", "强度", "状态", "证据数", "利益类型"],
-    },
-}
-
-
-def _ledger_rows(table_id: str, ledger: dict) -> list[list]:
-    """从研究账本 dict 派生表格行（与 _TABLE_DEFS 列序一一对应）。"""
-    if not isinstance(ledger, dict):
-        return []
-    rows: list[list] = []
-    if table_id == "sources":
-        for i, s in enumerate(ledger.get("sources") or [], 1):
-            if not isinstance(s, dict):
-                continue
-            dup = "重复" if s.get("duplicate_of") else ("首发" if s.get("content_fingerprint") else "")
-            rows.append([
-                s.get("id") or f"S{i}",
-                s.get("title") or "",
-                s.get("url") or s.get("canonical_url") or "",
-                s.get("source_type") or "",
-                s.get("quality_tier") or "",
-                s.get("published_at") or "",
-                s.get("independence_group") or "",
-                dup,
-                (s.get("excerpt") or "").strip()[:160],
-            ])
-    elif table_id == "subjects":
-        for i, n in enumerate(ledger.get("nodes") or [], 1):
-            if not isinstance(n, dict):
-                continue
-            evidence = n.get("evidence_ids") or []
-            interests = n.get("interests") or []
-            rows.append([
-                n.get("id") or f"N{i}",
-                n.get("label") or "",
-                n.get("role") or "",
-                n.get("stance") or "",
-                n.get("weight") if n.get("weight") is not None else "",
-                n.get("confidence") if n.get("confidence") is not None else "",
-                len(evidence),
-                "；".join(str(x) for x in interests)[:200],
-            ])
-    elif table_id == "relations":
-        labels = {
-            (n.get("id") if isinstance(n, dict) else None): (n.get("label") or "")
-            for n in (ledger.get("nodes") or []) if isinstance(n, dict)
-        }
-        for i, r in enumerate(ledger.get("relations") or [], 1):
-            if not isinstance(r, dict):
-                continue
-            interest_types = r.get("interest_types") or []
-            rows.append([
-                labels.get(r.get("source_node")) or r.get("source_node") or "",
-                labels.get(r.get("target_node")) or r.get("target_node") or "",
-                r.get("label") or "",
-                r.get("polarity") or "",
-                r.get("strength") if r.get("strength") is not None else "",
-                r.get("status") or "",
-                r.get("evidence_count") if r.get("evidence_count") is not None else len(r.get("evidence_ids") or []),
-                "；".join(str(x) for x in interest_types)[:200],
-            ])
-    return rows
-
 
 def _resolve_report_version(db, task_id: str, version_id: str | None):
     if version_id:
@@ -586,7 +516,7 @@ def get_report_table(
     current: dict = Depends(get_current_user),
 ):
     """按表 id 返回结构化数据表；?format=csv 时输出 Excel 可直开的 CSV 文件。"""
-    if table_id not in _TABLE_DEFS:
+    if not _table_exists(table_id):
         return {"error": "table_not_found", "message": f"未知数据表：{table_id}"}
     with SessionLocal() as db:
         task = task_owned(db, task_id, current)
@@ -598,18 +528,20 @@ def get_report_table(
             return {"status": "not_found"}
         ledger = version.research_snapshot or {}
         rows = _ledger_rows(table_id, ledger)
-        columns = _TABLE_DEFS[table_id]["columns"]
+        columns = _table_columns(table_id)
         research_status = version.research_status or "unavailable"
+        applicable = _table_applicable(table_id, task.analysis_type)
     result = {
         "task_id": task_id,
         "version_id": version.id,
         "version_no": version.version_no or 1,
         "table_id": table_id,
-        "table_name": _TABLE_DEFS[table_id]["name"],
+        "table_name": _table_name(table_id),
         "columns": columns,
         "rows": rows,
         "row_count": len(rows),
         "research_status": research_status,
+        "applicable": applicable,
     }
     if format == "csv":
         buf = io.StringIO()

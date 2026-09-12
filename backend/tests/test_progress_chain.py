@@ -140,7 +140,7 @@ def _run(tid: str, timeout: int = 60) -> list[str]:
 def mock_export(monkeypatch):
     """把导出与 PDF 诊断替换为无副作用桩（不写文件、不触引擎）。"""
 
-    def fake_export(title, markdown, output_dir=None, slug=None):
+    def fake_export(title, markdown, output_dir=None, slug=None, data_tables=None):
         return {"word": "fake.docx", "diagrams": ["d1"], "title": title}
 
     monkeypatch.setattr("app.generator.export_report", fake_export)
@@ -238,7 +238,7 @@ def test_poll_recovers_phase_and_progress(client, subbed, mock_export):
 
 def test_error_phase_classified_to_six_steps(client, subbed, monkeypatch):
     """导出失败时，error_phase 精确落在第 6 步 output（而非笼统的 export）。"""
-    def boom(title, markdown, output_dir=None, slug=None):  # noqa: ANN001
+    def boom(title, markdown, output_dir=None, slug=None, data_tables=None):  # noqa: ANN001
         raise RuntimeError("docx export failed: disk full")
 
     monkeypatch.setattr("app.generator.export_report", boom)

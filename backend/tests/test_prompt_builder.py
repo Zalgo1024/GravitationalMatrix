@@ -57,3 +57,25 @@ def test_expected_chapters():
     assert EXPECTED_CHAPTERS["org"] == 9
     assert EXPECTED_CHAPTERS["opinion"] == 7
     assert EXPECTED_CHAPTERS["combo"] == 0
+
+
+def test_optional_sections_present_as_optional_not_sentinels():
+    """账本 1.3：叙事份额/政策条款拆解为可选节——结构里有、哨兵集里没有。"""
+    from app.prompt_builder import PROMPT_VERSION
+
+    assert PROMPT_VERSION == "1.3"
+
+    opinion_prompt = build_system_prompt("opinion")
+    assert "## 叙事份额分析" in opinion_prompt
+    assert "可选" in opinion_prompt
+    # 不进哨兵集：不写不触发契约校验
+    assert "叙事份额分析" not in SENTINEL_SECTIONS["opinion"]
+
+    policy_prompt = build_system_prompt("policy")
+    assert "## 政策条款拆解" in policy_prompt
+    assert "可选" in policy_prompt
+    assert "政策条款拆解" not in SENTINEL_SECTIONS["policy"]
+
+    # 可选节标注了降级规则：无法量化/无证据时省略，不得编造
+    assert "省略" in opinion_prompt or "整节省略" in opinion_prompt
+    assert "省略" in policy_prompt or "整节省略" in policy_prompt

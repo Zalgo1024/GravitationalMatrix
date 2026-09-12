@@ -15,12 +15,18 @@ interface TablePayload {
   rows: (string | number)[][];
   row_count: number;
   research_status: string;
+  applicable?: boolean;
 }
 
+// F15 六表：基础三表全类型适用；时间线=事件/舆情/组合、叙事份额=舆情/组合、
+// 政策条款=政策/组合（后端 applicable 判定，不适用的表显示占位说明）。
 const TABLES: { id: string; label: string }[] = [
   { id: "sources", label: "来源证据" },
   { id: "subjects", label: "主体清单" },
   { id: "relations", label: "关系清单" },
+  { id: "timeline", label: "事件时间线" },
+  { id: "narratives", label: "叙事份额" },
+  { id: "policy_clauses", label: "政策条款" },
 ];
 
 function cellText(value: string | number) {
@@ -81,7 +87,10 @@ export function ReportDataTables({ taskId, versionId }: { taskId: string; versio
     </header>
     {loading && <div className="report-version-loading" aria-busy="true"><LoaderCircle size={16} className="spin" /> 正在读取数据表...</div>}
     {error && <p className="delivery-error" role="alert">{error}</p>}
-    {!loading && !error && payload && (payload.row_count === 0
+    {!loading && !error && payload && payload.applicable === false
+      ? <p className="section-empty">{payload.table_name}仅适用于对应的报告类型（事件时间线→事件/舆情/组合，叙事份额→舆情/组合，政策条款→政策/组合）；当前报告类型不适用。</p>
+      : null}
+    {!loading && !error && payload && payload.applicable !== false && (payload.row_count === 0
       ? <p className="section-empty">该版本还没有可展示的{payload.table_name}数据（研究账本不可用或为空）。可先「补充信息与证据」重建研究账本。</p>
       : <div className="data-table data-table--scroll" role="table" aria-label={payload.table_name}>
           <div className="data-table__head data-table__head--sortable">
@@ -95,6 +104,6 @@ export function ReportDataTables({ taskId, versionId }: { taskId: string; versio
             })}
           </div>)}
         </div>)}
-    {!loading && !error && payload && payload.row_count > 0 && <p className="muted-count">共 {payload.row_count} 行{filter ? `（过滤后 ${rows.length} 行）` : ""} · 研究状态 {payload.research_status}</p>}
+    {!loading && !error && payload && payload.applicable !== false && payload.row_count > 0 && <p className="muted-count">共 {payload.row_count} 行{filter ? `（过滤后 ${rows.length} 行）` : ""} · 研究状态 {payload.research_status}</p>}
   </section>;
 }

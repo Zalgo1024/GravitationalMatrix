@@ -80,6 +80,7 @@ _SECTION_IDS: dict[str, str] = {
     "核心冲突点": "core_conflicts",
     "行动建议": "recommendations",
     "政策对象图谱": "policy_portrait",
+    "政策条款拆解": "policy_clause_breakdown",
     "政策权重与空间分析": "policy_weight",
     # ── 深度事件分析新增章节（对标政策分析的对象图谱/权重空间） ──
     "利益主体识别": "case_portrait",
@@ -114,6 +115,7 @@ _SECTION_IDS: dict[str, str] = {
     "叙事竞争矩阵": "opinion_narrative",
     "舆论叙事矩阵": "opinion_narrative",
     "叙事战场": "opinion_narrative",
+    "叙事份额分析": "opinion_narrative_share",
     "三元生命维度": "opinion_trilife",
     "舆论的三元生命维度": "opinion_trilife",
     "三元生命维度（舆论作为活体）": "opinion_trilife",

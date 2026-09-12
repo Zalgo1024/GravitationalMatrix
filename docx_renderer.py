@@ -34,8 +34,8 @@ from parser import Block, ParsedReport, Section
 MODULES = {
     "policy": {
         "sections": ["overview", "fact_summary", "evidence", "framework", "policy_portrait",
-                     "policy_weight", "core_conflicts", "analysis_body", "conclusion",
-                     "recommendations", "appendix"],
+                     "policy_clause_breakdown", "policy_weight", "core_conflicts",
+                     "analysis_body", "conclusion", "recommendations", "appendix"],
         "sentinels": ["policy_portrait", "policy_weight"],
         "label": "政策",
     },
@@ -57,8 +57,9 @@ MODULES = {
     },
     "opinion": {
         "sections": ["overview", "opinion_event", "evidence", "opinion_actors", "opinion_narrative",
-                     "opinion_trilife", "opinion_reverse", "opinion_evolution",
-                     "core_conflicts", "conclusion", "recommendations", "appendix"],
+                     "opinion_narrative_share", "opinion_trilife", "opinion_reverse",
+                     "opinion_evolution", "core_conflicts", "conclusion", "recommendations",
+                     "appendix"],
         "sentinels": ["opinion_event", "opinion_actors", "opinion_narrative",
                       "opinion_trilife", "opinion_reverse", "opinion_evolution"],
         "label": "舆情",
@@ -146,6 +147,7 @@ def render_docx(
     output_folder: Optional[str] = None,
     diagram_collector: Optional[list] = None,
     tone: str = "neutral",
+    data_tables: Optional[list] = None,
 ) -> str:
     if config is None:
         from config import load_config
@@ -200,6 +202,10 @@ def render_docx(
                         output_folder=output_folder,
                         diagram_collector=diagram_collector,
                         diagram_counter=_diagram_counter)
+
+    # F15：Word 附表「关键数据表」（可选；None/空列表时输出与既有逐字一致）
+    if data_tables:
+        _render_appendix_data_tables(doc, data_tables, config)
 
     doc.save(output_path)
 
@@ -761,8 +767,8 @@ def _add_cell_rich_text(para, cell_text: str, config: Config) -> None:
 
 # ── 多行表格 ───────────────────────────────────────────────
 
-def _render_multi_row_table(doc: Document, block: Block, config: Config) -> None:
-    rows = block.rows
+def _render_rows_table(doc: Document, rows: list, config: Config) -> None:
+    """渲染一个多行表格（rows 首行为表头；Grid 样式 + F0F0F0 表头底纹）。"""
     if not rows or len(rows) < 2:
         return
 
@@ -788,6 +794,30 @@ def _render_multi_row_table(doc: Document, block: Block, config: Config) -> None
                     f'<w:shd {nsdecls("w")} w:fill="F0F0F0" w:val="clear"/>'
                 )
                 cell._tc.get_or_add_tcPr().append(shading)
+
+
+def _render_multi_row_table(doc: Document, block: Block, config: Config) -> None:
+    _render_rows_table(doc, block.rows, config)
+
+
+# ── Word 附表「关键数据表」（F15） ─────────────────────────
+
+def _render_appendix_data_tables(doc: Document, tables: list, config: Config) -> None:
+    """在文末渲染附表（来源证据表/主体清单表/事件时间线表或政策条款表）。
+
+    tables: [{name, columns, rows}]，由 backend report_tables.word_data_tables 派生；
+    rows 首行不重复表头（columns 即表头）。空表跳过。
+    """
+    seq = 0
+    for table in tables:
+        columns = table.get("columns") or []
+        rows = table.get("rows") or []
+        if not columns or not rows:
+            continue
+        seq += 1
+        name = table.get("name") or f"数据表{seq}"
+        doc.add_heading(f"附表 {seq}：{name}", level=1)
+        _render_rows_table(doc, [columns] + rows, config)
 
 
 # ── 图表（DIAGRAM JSON） ──────────────────────────────────
