@@ -24,6 +24,7 @@ from app.auth import get_current_user, task_owned
 from app.db import SessionLocal
 from app.generator import ReportGenerator
 from app.models import Project, ReportVersion, Task
+from app.report_tables import geo_aggregation as _geo_aggregation
 from app.report_tables import ledger_rows as _ledger_rows
 from app.report_tables import table_applicable as _table_applicable
 from app.report_tables import table_columns as _table_columns
@@ -557,6 +558,37 @@ def get_report_table(
             headers={"Content-Disposition": f"attachment; filename={filename}"},
         )
     return result
+
+
+@router.get("/api/reports/{task_id}/geo")
+def get_report_geo(
+    task_id: str,
+    version_id: str | None = None,
+    current: dict = Depends(get_current_user),
+):
+    """F11 地图聚合（纯派生零 LLM）：来源地域分布（省级着色 + 市级明细）。
+
+    口径与数据表的地域列一致（recognize_region_detailed）；按 independence_group
+    归并后计独立源数与份额。coverage 过低时前端灰显提示「地域覆盖不足」。
+    """
+    with SessionLocal() as db:
+        task = task_owned(db, task_id, current)
+        if not task:
+            return {"status": "not_found"}
+        _ensure_original_version(db, task)
+        version = _resolve_report_version(db, task_id, version_id)
+        if version is None:
+            return {"status": "not_found"}
+        aggregation = _geo_aggregation(version.research_snapshot or {})
+        aggregation.update(
+            {
+                "task_id": task_id,
+                "version_id": version.id,
+                "version_no": version.version_no or 1,
+                "research_status": version.research_status or "unavailable",
+            }
+        )
+        return aggregation
 
 
 @router.delete("/api/reports/{task_id}")

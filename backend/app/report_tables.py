@@ -194,6 +194,78 @@ def ledger_rows(table_id: str, ledger: dict) -> list[list]:
     return rows
 
 
+def geo_aggregation(ledger: dict) -> dict:
+    """F11 地图聚合（纯派生零 LLM）：来源按地域归并 → 独立源组计数 → 份额。
+
+    口径与 region_of 一致（recognize_region_detailed，市级命中也归并到所属省，
+    前端中国图按省级着色；city 明细保留在 groups 里供后续市级下钻）。
+    - independent_sources：按 independence_group 去重后的独立源数（同组转载只算 1）；
+    - share：该省独立源数 / 有地域的独立源总数（0~1，四舍五入 3 位）；
+    - coverage：有地域的独立源数 / 全部独立源数（过低时前端灰显提示）；
+    - polarity：立场极性聚合（初版空数组，等主体 stance 打通后填充）。
+    """
+    if not isinstance(ledger, dict):
+        return {"regions": [], "coverage": 0.0, "polarity": []}
+    # 独立源组 -> [地域命中]；无组的来源按自身 id 兜底（各自独立）
+    groups: dict[str, dict] = {}
+    for s in ledger.get("sources") or []:
+        if not isinstance(s, dict):
+            continue
+        key = str(s.get("independence_group") or s.get("url") or s.get("id") or "")
+        if not key:
+            continue
+        detail = recognize_region_detailed(
+            " ".join(str(s.get(k) or "") for k in ("title", "excerpt"))
+        )
+        province_code = str(detail.get("region_code") or "")
+        province_name = str(detail.get("region_name") or "")
+        city_name = str(detail.get("city_name") or "")
+        group = groups.setdefault(key, {"province": (province_code, province_name), "cities": set(), "count": 0})
+        group["count"] += 1
+        if province_code:
+            # 组内取第一个命中的省（同组转载地域一致）；无命中的组保持未识别
+            if not group["province"][0]:
+                group["province"] = (province_code, province_name)
+            if city_name and city_name not in group["cities"]:
+                group["cities"].add(city_name)
+
+    by_province: dict[str, dict] = {}
+    total_indep = 0
+    located_indep = 0
+    for group in groups.values():
+        total_indep += 1
+        pcode, pname = group["province"]
+        if not pcode:
+            continue
+        located_indep += 1
+        bucket = by_province.setdefault(
+            pcode,
+            {"region_code": pcode, "region_name": pname, "independent_sources": 0, "sources": 0, "cities": set()},
+        )
+        bucket["independent_sources"] += 1
+        bucket["sources"] += group["count"]
+        bucket["cities"].update(group["cities"])
+
+    regions = []
+    for bucket in by_province.values():
+        regions.append(
+            {
+                "region_code": bucket["region_code"],
+                "region_name": bucket["region_name"],
+                "independent_sources": bucket["independent_sources"],
+                "sources": bucket["sources"],
+                "share": round(bucket["independent_sources"] / located_indep, 3) if located_indep else 0.0,
+                "cities": sorted(bucket["cities"]),
+            }
+        )
+    regions.sort(key=lambda r: (-r["independent_sources"], r["region_name"]))
+    return {
+        "regions": regions,
+        "coverage": round(located_indep / total_indep, 3) if total_indep else 0.0,
+        "polarity": [],
+    }
+
+
 def word_data_tables(ledger: dict, analysis_type: str | None = None) -> list[dict]:
     """派生 Word 附表「关键数据表」：来源证据 + 主体清单 + 时间线（政策报告换条款表）。
 
