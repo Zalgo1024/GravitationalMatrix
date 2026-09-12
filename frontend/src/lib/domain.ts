@@ -22,6 +22,8 @@ export interface NewAnalysisInput {
   web?: boolean;
   /** F2 自动取证：分析时同步多平台采集并把结果入库材料库（后端 auto_collect） */
   autoCollect?: boolean;
+  /** F10 地域范围约束：行政区划码值列表（省/市）；空数组/未选 = 不限地域 */
+  regionScope?: string[];
 }
 
 export interface ProjectSummary {

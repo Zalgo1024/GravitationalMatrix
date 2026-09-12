@@ -16,7 +16,7 @@ from app.settings import settings
 
 # 提示词版本（阶段四：与每次生成结果一起持久化，保证报告可复现、可审计）。
 # 当系统提示词（analysis_prompt.md / 结构要求 / 理论语境）发生重大变更时，递增此版本号。
-PROMPT_VERSION = "1.3"
+PROMPT_VERSION = "1.4"
 
 # 5 类型哨兵章节（逐字取自 KERNEL parser._SECTION_IDS，保证内核路由命中）。
 # combo 不强制单类（走「≥2 类哨兵」后校验，见 contract._count_sentinel_modes）。
@@ -188,6 +188,29 @@ COMBO_STRUCTURE = """报告结构（组合模式）：
 """
 
 
+def _region_scope_block(region_scope: list[str] | None) -> str:
+    """F10：把 region_scope 码值列表渲染为「# 地域范围约束」提示词段。
+
+    码值经 regions.region_scope_names 解析为「XX省（XX市、XX市）」；空/None 返回
+    空串（不注入任何约束段，行为与既有逐字一致）。rule 引擎路径不走本函数。
+    """
+    if not region_scope:
+        return ""
+    from app.connectors.regions import region_scope_names
+
+    names = region_scope_names(region_scope)
+    if not names:
+        return ""
+    listing = "、".join(names)
+    return f"""
+
+# 地域范围约束（强制）
+- 本次分析的地域范围为：{listing}。
+- 分析对象、事实、主体与利益关系必须落在这个地域范围内；范围外的全国性背景最多用
+  一句话交代，不得展开成主体章节。
+- 材料中出现的范围外信息一律视为背景噪音，不得编造范围内不存在的事实。"""
+
+
 def _structure_for(analysis_type: str) -> str:
     if analysis_type == "policy":
         return POLICY_STRUCTURE
@@ -200,11 +223,12 @@ def _structure_for(analysis_type: str) -> str:
     return CASE_STRUCTURE
 
 
-def build_system_prompt(analysis_type: str = "case") -> str:
+def build_system_prompt(analysis_type: str = "case", region_scope: list[str] | None = None) -> str:
     base = _read_prompt_template()
     structure = _structure_for(analysis_type)
     theory = _theory_context()
     guard = SENTINEL_SECTIONS.get(analysis_type, [])
+    region_block = _region_scope_block(region_scope)
     sentinel_block = ""
     if guard:
         lines = "\n".join(f"## {s}" for s in guard)
@@ -227,6 +251,7 @@ def build_system_prompt(analysis_type: str = "case") -> str:
 # 理论语境（供概念与节点/边类型选择参考）
 {theory}
 {sentinel_block}
+{region_block}
 {REPORT_WRITING_STANDARD}
 # 输出约束
 - 仅输出 Markdown 正文，不要输出任何解释性文字，不要用代码围栏包裹整篇。

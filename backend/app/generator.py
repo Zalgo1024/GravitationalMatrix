@@ -252,7 +252,8 @@ class ReportGenerator:
             "请返回修订后的完整 Markdown，不要解释，不要用代码围栏包裹整篇。"
         )
 
-    def generate(self, input_text: str = "", title: str | None = None) -> str:
+    def generate(self, input_text: str = "", title: str | None = None,
+                 region_scope: list[str] | None = None) -> str:
         self._current_input_text = input_text or ""
         if self.mode == "rule":
             si = self._build_structured(input_text, title)
@@ -303,7 +304,7 @@ class ReportGenerator:
             )
             return self._fallback_or_raise(input_text, title, reason)
 
-        system = build_system_prompt(self.analysis_type)
+        system = build_system_prompt(self.analysis_type, region_scope=region_scope)
         user = self._build_user_prompt(input_text, title, self.materials)
         try:
             raw = self._generate_with_retry(llm, system, user, cfg["temperature"])
@@ -844,6 +845,7 @@ class ReportGenerator:
         output_dir: str | None = None,
         slug: str | None = None,
         on_phase=None,
+        region_scope: list[str] | None = None,
     ) -> dict:
         """生成报告并导出 Word/PDF。
 
@@ -866,7 +868,7 @@ class ReportGenerator:
         _safe_phase("decompose", 25)
         started = time.monotonic()
         stage_started = started
-        md = self.generate(input_text, title)
+        md = self.generate(input_text, title, region_scope=region_scope)
         generate_seconds = time.monotonic() - stage_started
         _safe_phase("network", 55)
         stage_started = time.monotonic()

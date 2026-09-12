@@ -63,7 +63,8 @@ def test_optional_sections_present_as_optional_not_sentinels():
     """账本 1.3：叙事份额/政策条款拆解为可选节——结构里有、哨兵集里没有。"""
     from app.prompt_builder import PROMPT_VERSION
 
-    assert PROMPT_VERSION == "1.3"
+    # 可选节自 1.3 引入；1.4 起又叠加地域范围约束段（版本只增不减）
+    assert PROMPT_VERSION >= "1.3"
 
     opinion_prompt = build_system_prompt("opinion")
     assert "## 叙事份额分析" in opinion_prompt

@@ -23,7 +23,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app import queue as taskq
 from app.db import init_db, seed_admin_user, seed_projects
-from app.routers import admin_ops, analyze, auth, benchmarks, cases, collect, materials, monitoring, projects, reports, search, settings, system, tasks
+from app.routers import admin_ops, analyze, auth, benchmarks, cases, collect, materials, monitoring, projects, regions, reports, search, settings, system, tasks
 # 注意：上面 routers 里的 `settings` 是路由模块，此处配置实例必须另起别名，
 # 否则会覆盖 `settings.router` 导致装配失败。
 from app.settings import settings as app_settings
@@ -113,6 +113,7 @@ app.include_router(projects.router)
 app.include_router(reports.router)
 app.include_router(materials.router)
 app.include_router(collect.router)
+app.include_router(regions.router)  # F10：行政区划码表（前端地域多选共用）
 app.include_router(tasks.router)
 app.include_router(search.router)
 app.include_router(cases.router)

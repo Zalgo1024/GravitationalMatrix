@@ -3,6 +3,7 @@
 import { CheckCircle2, ChevronDown, CircleHelp, FileText, Globe2, Paperclip, Radar, Send, Sparkles, X } from "lucide-react";
 import React, { useRef, useState } from "react";
 import { analysisTypes, type AnalysisType, type EngineMode, type MaterialRecord, type NewAnalysisInput, type Project } from "@/lib/domain";
+import { RegionScopePicker } from "./region-scope-picker";
 
 // 与后端 backend/app/routers/materials.py parse_uploaded_file 支持的格式保持一致；
 // 图片/PPT 等二进制格式后端无法解析为文本，前端直接拒绝，避免入库乱码素材。
@@ -57,6 +58,8 @@ export function AnalysisCreation({
   const [useWeb, setUseWeb] = useState(true);
   // F2 自动取证：提交分析时同步跑多平台采集，采集结果自动入库材料库。
   const [autoCollect, setAutoCollect] = useState(false);
+  // F10 地域范围约束：省/市码值列表；空数组 = 不限地域。
+  const [regionScope, setRegionScope] = useState<string[]>([]);
   const [attachments, setAttachments] = useState<MaterialRecord[]>([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -102,6 +105,7 @@ export function AnalysisCreation({
         materialIds: attachments.map((item) => item.id),
         web: useWeb,
         autoCollect,
+        regionScope,
       });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "创建分析失败，请稍后重试。");
@@ -153,6 +157,7 @@ export function AnalysisCreation({
             <input ref={fileInputRef} className="visually-hidden" type="file" multiple accept={acceptedFileTypes} onChange={(event) => void upload(event.target.files)} />
             <button className="composer-tool" type="button" onClick={() => fileInputRef.current?.click()} disabled={busy} title="添加材料"><Paperclip size={17} /><span>添加材料</span></button>
             <button className={useWeb ? "composer-tool composer-tool--active" : "composer-tool"} type="button" onClick={() => setUseWeb((current) => !current)} disabled={busy} title="联网检索"><Globe2 size={17} /><span>联网检索</span></button>
+            <RegionScopePicker selected={regionScope} onChange={setRegionScope} />
             <label className="composer-purpose"><Sparkles size={16} /><span>分析用途</span><select aria-label="分析用途" value={type} onChange={(event) => setType(event.target.value as AnalysisType)}>{analysisTypes.map((item) => <option value={item.id} key={item.id}>{item.label}</option>)}</select></label>
           </div>
           <button className="composer-send" type="button" onClick={() => void submit()} disabled={busy}>{busy ? "处理中" : "开始分析"}<Send size={16} /></button>

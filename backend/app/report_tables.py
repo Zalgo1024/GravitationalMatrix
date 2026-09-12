@@ -11,7 +11,7 @@ ReportVersion.research_snapshot（研究账本 dict）**纯派生**，零 LLM �
 """
 from __future__ import annotations
 
-from app.connectors.regions import recognize_region
+from app.connectors.regions import recognize_region_detailed
 
 _TABLE_DEFS: dict[str, dict] = {
     "sources": {
@@ -71,7 +71,8 @@ def table_name(table_id: str) -> str:
 def region_of(item: dict) -> str:
     """对单条来源/主体派生地域标签（F10 表内即时派生，不改账本模型）。
 
-    与 /geo 聚合共用同一 recognize_region 口径；未识别返回空串。
+    与 /geo 聚合共用同一 recognize_region_detailed 口径：命中市级显示市名
+    （最具体），仅命中省级显示省名；未识别返回空串。
     """
     if not isinstance(item, dict):
         return ""
@@ -81,8 +82,8 @@ def region_of(item: dict) -> str:
     )
     if not text.strip():
         return ""
-    region = recognize_region(text)
-    return str(region.get("region_name") or "")
+    region = recognize_region_detailed(text)
+    return str(region.get("city_name") or region.get("region_name") or "")
 
 
 def _labels_of(ledger: dict) -> dict:

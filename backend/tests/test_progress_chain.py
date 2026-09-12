@@ -439,7 +439,7 @@ def test_structured_llm_task_passes_rule_fallback_payload(
         def __init__(self, llm, **kwargs):
             captured.update(kwargs)
 
-        def generate_and_export(self, input_text, title, output_dir, slug=None, on_phase=None):
+        def generate_and_export(self, input_text, title, output_dir, slug=None, on_phase=None, region_scope=None):
             for phase, pct in (
                 ("decompose", 25),
                 ("network", 55),

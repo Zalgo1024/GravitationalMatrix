@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
 from app.auth import get_current_user, rate_limiter, task_owned, user_from_ws_cookies
+from app.connectors.regions import valid_region_codes
 from app.db import SessionLocal
 from app import queue as taskq
 from app import rule_engine
@@ -97,6 +98,7 @@ class AnalyzeRequest(BaseModel):
     web: bool = True  # 自由输入默认联网检索；用户可显式传 false 跳过
     source_urls: list[str] | None = None  # T8：用户勾选来源白名单（null=自动检索全部）
     auto_collect: bool = False  # F2：本次分析附带多平台采集入库（前端默认传 false）
+    region_scope: list[str] | None = None  # F10：地域范围约束（省/市码值列表；空/None=不限）
 
 
 def llm_is_available(llm_config: dict | None = None) -> bool:
@@ -171,6 +173,7 @@ async def analyze(
                 web=req.web,
                 source_urls=req.source_urls or None,
                 auto_collect=bool(req.auto_collect),
+                region_scope=valid_region_codes(req.region_scope) or None,
                 status="queued",
             )
         )
@@ -258,6 +261,7 @@ def retry_task(
             web=t.web,  # 继承联网开关
             source_urls=t.source_urls,  # 继承来源白名单
             auto_collect=t.auto_collect,  # 继承自动取证开关
+            region_scope=t.region_scope,  # F10：继承地域范围约束
         )
         db.add(new_task)
         db.commit()

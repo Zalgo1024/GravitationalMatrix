@@ -401,6 +401,7 @@ def _process(task_id: str) -> None:
         source_urls = t.source_urls or []  # T8：用户勾选白名单
         material_ids = t.material_ids or []
         auto_collect = bool(t.auto_collect)  # F2：自动取证
+        region_scope = list(t.region_scope or []) if t.region_scope else None  # F10：地域范围约束
         owner_id_val = t.owner_id  # 采集素材归属（detached 后仍可读已加载属性）
         project_id_val = t.project_id
         operation = t.operation or "analysis"
@@ -660,7 +661,7 @@ def _process(task_id: str) -> None:
         # 导出瞬时故障由 generator 仅重试 export 阶段，绝不重复调用模型与证据提取。
         out = gen.generate_and_export(
             input_text, title, settings.generated_dir,
-            slug=task_id, on_phase=_on_phase,
+            slug=task_id, on_phase=_on_phase, region_scope=region_scope,
         )
         # 去掉绝对路径 folder 字段，避免外泄本地路径
         safe = {k: v for k, v in out.items() if k != "folder"}

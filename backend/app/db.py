@@ -141,6 +141,9 @@ def init_db() -> None:
         # F2：自动取证开关（分析时同步多平台采集入库）
         if "auto_collect" not in cols:
             alters.append("ALTER TABLE tasks ADD COLUMN auto_collect BOOLEAN DEFAULT 0")
+        # F10：地域范围约束（码值 JSON 数组；NULL=不限）
+        if "region_scope" not in cols:
+            alters.append("ALTER TABLE tasks ADD COLUMN region_scope JSON")
         # T13：report_versions 版本管理扩展（version_no/edited_by/summary/is_current）
         vcols = {c["name"] for c in inspect(engine).get_columns("report_versions")}
         for col, ddl in (

@@ -149,6 +149,7 @@ describe("createAnalysisTask", () => {
         material_ids: [],
         web: false,
         auto_collect: false,
+        region_scope: null,
         llm_config: { profile_id: "browser-profile-111111111111" },
       }),
     }));

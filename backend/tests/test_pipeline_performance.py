@@ -13,7 +13,7 @@ def test_export_retry_does_not_repeat_report_generation(monkeypatch, sample_even
     original_generate = gen.generate
     calls = {"generate": 0, "export": 0}
 
-    def counted_generate(input_text="", title=None):
+    def counted_generate(input_text="", title=None, region_scope=None):
         calls["generate"] += 1
         return original_generate(input_text, title)
 

@@ -23,6 +23,8 @@ export async function createAnalysisTask(
       material_ids: input.materialIds,
       web: Boolean(input.web),
       auto_collect: Boolean(input.autoCollect),
+      // F10 地域范围约束：码值列表；空数组/未选 → null（后端视为不限）
+      region_scope: input.regionScope?.length ? input.regionScope : null,
       llm_config: { profile_id: profileId },
     }),
   }) as { task_id: string };

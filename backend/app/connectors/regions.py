@@ -98,3 +98,128 @@ def recognize_region(text: str) -> dict:
     if best:
         return {"region_code": best[2], "region_name": best[1], "region_source": "title" if len(body) <= 60 else "body"}
     return {"region_code": None, "region_name": None, "region_source": "unknown"}
+
+
+# —— F10：市级识别与码表解析（region_scope 全链路 + 表内地域列/地图聚合共用） ——
+
+_CITY_INDEX: dict[str, tuple[str, str, str]] | None = None  # 别名 -> (市码, 市名, 省码)
+_PROV_BY_CODE: dict[str, str] | None = None  # 省码 -> 省名
+
+
+def _ensure_city_index() -> tuple[dict[str, tuple[str, str, str]], dict[str, str]]:
+    """市级别名索引（模块级缓存，首次调用加载 regions.json v2）。
+
+    与省别名冲突的市级别名（吉林市「吉林」、海南州「海南」等）只保留全称，
+    保证省级识别优先级不被破坏。
+    """
+    global _CITY_INDEX, _PROV_BY_CODE
+    if _CITY_INDEX is not None and _PROV_BY_CODE is not None:
+        return _CITY_INDEX, _PROV_BY_CODE
+    index: dict[str, tuple[str, str, str]] = {}
+    prov_by_code: dict[str, str] = {}
+    data = load_regions()
+    for prov in data.get("provinces") or []:
+        pcode, pname = str(prov.get("code") or ""), str(prov.get("name") or "")
+        prov_by_code[pcode] = pname
+        for city in prov.get("cities") or []:
+            ccode, cname = str(city.get("code") or ""), str(city.get("name") or "")
+            if not ccode or not cname:
+                continue
+            index.setdefault(cname, (ccode, cname, pcode))
+            for alias in city.get("aliases") or []:
+                alias = str(alias or "").strip()
+                if not alias or alias in _ALIAS:  # 与省名冲突 → 市级只认全称
+                    continue
+                index.setdefault(alias, (ccode, cname, pcode))
+    _CITY_INDEX, _PROV_BY_CODE = index, prov_by_code
+    return index, prov_by_code
+
+
+def recognize_region_detailed(text: str) -> dict:
+    """市级优先的地区识别（F10）。
+
+    返回 {"region_code", "region_name", "city_code", "city_name", "region_source"}：
+    - 命中市名（含「惠州」「深圳市」等别名）→ province=所属省 + city，最具体优先；
+    - 仅命中省名/发文机关 → city 为 None；
+    - 未识别 → 全 None + source=unknown。
+    recognize_region（省级 3 键契约）保持不变，rss **region 展开等既有调用不受影响。
+    """
+    body = (text or "").strip()
+    empty = {
+        "region_code": None, "region_name": None,
+        "city_code": None, "city_name": None, "region_source": "unknown",
+    }
+    if not body:
+        return empty
+    city_index, prov_by_code = _ensure_city_index()
+    # 1) 市名直写（取最早出现，与省级同理）
+    best: tuple[int, str, str, str] | None = None
+    for alias, (ccode, cname, pcode) in city_index.items():
+        idx = body.find(alias)
+        if idx >= 0 and (best is None or idx < best[0]):
+            best = (idx, ccode, cname, pcode)
+    if best:
+        return {
+            "region_code": best[3],
+            "region_name": prov_by_code.get(best[3]),
+            "city_code": best[1],
+            "city_name": best[2],
+            "region_source": "title" if len(body) <= 60 else "body",
+        }
+    # 2) 省级回退（发文机关模式优先，逻辑与 recognize_region 一致）
+    prov = recognize_region(body)
+    if prov.get("region_code"):
+        return {
+            "region_code": prov.get("region_code"),
+            "region_name": prov.get("region_name"),
+            "city_code": None,
+            "city_name": None,
+            "region_source": prov.get("region_source"),
+        }
+    return empty
+
+
+def valid_region_codes(codes: list[str] | None) -> list[str]:
+    """过滤 region_scope：只保留码表中存在的省级/市级码，去重保序。"""
+    if not codes:
+        return []
+    _, prov_by_code = _ensure_city_index()
+    city_codes = {ccode for ccode, _, _ in _ensure_city_index()[0].values()}
+    seen: set[str] = set()
+    out: list[str] = []
+    for raw in codes:
+        code = str(raw or "").strip()
+        if not code or code in seen:
+            continue
+        if code in city_codes or code in prov_by_code:
+            seen.add(code)
+            out.append(code)
+    return out
+
+
+def region_scope_names(codes: list[str] | None) -> list[str]:
+    """把 region_scope 码值解析为「XX省（XX市、XX市）」可读名（提示词注入用）。"""
+    if not codes:
+        return []
+    city_index, prov_by_code = _ensure_city_index()
+    # 市码 -> (市名, 省码)；省码 -> 省名
+    city_by_code = {ccode: (cname, pcode) for ccode, cname, pcode in city_index.values()}
+    grouped: dict[str, list[str]] = {}
+    order: list[str] = []
+    for code in valid_region_codes(codes):
+        if code in city_by_code:
+            cname, pcode = city_by_code[code]
+            pname = prov_by_code.get(pcode) or pcode
+        else:
+            pname = prov_by_code.get(code) or code
+            cname = None
+        if pname not in grouped:
+            grouped[pname] = []
+            order.append(pname)
+        if cname and cname not in grouped[pname]:
+            grouped[pname].append(cname)
+    lines = []
+    for pname in order:
+        cities = grouped[pname]
+        lines.append(pname + (f"（{'、'.join(cities)}）" if cities else ""))
+    return lines
