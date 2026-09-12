@@ -1861,6 +1861,20 @@ html[data-theme="dark"] .editor-source textarea { background: oklch(.185 .014 25
 .report-geo__canvas { position: relative; }
 .report-geo__main { width: 100%; height: 420px; }
 .report-geo__sea { position: absolute; right: 8px; bottom: 8px; width: 150px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); overflow: hidden; }
+/* F11 增强：市级下钻 + 时间轴播放 */
+.report-geo__sea--hidden { display: none; }
+.report-geo__crumb { display: flex; align-items: center; gap: 10px; margin: 2px 0; }
+.report-geo__crumb button { display: inline-flex; align-items: center; gap: 3px; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--accent); font-size: 11px; font-weight: 600; padding: 4px 11px; cursor: pointer; }
+.report-geo__crumb button:hover { border-color: var(--accent); }
+.report-geo__crumb > span { color: var(--ink-muted); font-size: 11px; }
+.report-geo__timeline { display: flex; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); padding: 8px 12px; }
+.report-geo__timeline-play { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--accent); font-size: 11px; font-weight: 600; padding: 4px 11px; cursor: pointer; white-space: nowrap; }
+.report-geo__timeline-play:hover { border-color: var(--accent); }
+.report-geo__timeline input[type="range"] { flex: 1; min-width: 120px; accent-color: var(--accent); }
+.report-geo__timeline-month { min-width: 52px; text-align: right; color: var(--ink); font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.report-geo__timeline-reset { border: 0; background: transparent; color: var(--accent); font-size: 11px; cursor: pointer; white-space: nowrap; }
+.report-geo__detail-actions { display: inline-flex; align-items: center; gap: 8px; }
+.report-geo__drill-btn { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--accent); border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 11px; font-weight: 600; padding: 4px 11px; cursor: pointer; white-space: nowrap; }
 .report-geo__sea-canvas { width: 148px; height: 130px; }
 .report-geo__sea-title { position: absolute; left: 0; right: 0; bottom: 0; text-align: center; font-size: 10px; color: var(--ink-muted); padding: 2px 0; background: var(--surface); }
 .report-geo__note { margin: 0; font-size: 10px; color: var(--ink-muted); line-height: 1.6; }
