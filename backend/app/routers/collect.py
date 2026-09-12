@@ -87,7 +87,8 @@ def collect_preview(req: CollectPreviewRequest, current: dict = Depends(get_curr
         items.extend(got)
         if note:
             degraded.append(f"{kind}：{note}")
-    items = dedupe_items(items)[:_MAX_ITEMS]
+    # 判重条目直接从预览中剔除（同链/同文只保留首条，前端不再展示重复行）
+    items = [it for it in dedupe_items(items) if not it.duplicate_of][:_MAX_ITEMS]
     return {
         "query": query,
         "kinds": kinds,

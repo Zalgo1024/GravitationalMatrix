@@ -39,6 +39,7 @@ class CollectedItem:
     published_at: str | None = None
     region_code: str | None = None
     region_name: str | None = None
+    region_source: str = "unknown"  # issuer/title/body/unknown（recognize_region 口径）
     engagement: int | None = None
     content_text: str = ""
     # 去重三元组（dedupe_items 填充）

@@ -96,6 +96,7 @@ class AnalyzeRequest(BaseModel):
     search: bool | None = None  # 阶段五：搜索开关 None=自动 | True=强制搜索 | False=跳过（保留兼容）
     web: bool = True  # 自由输入默认联网检索；用户可显式传 false 跳过
     source_urls: list[str] | None = None  # T8：用户勾选来源白名单（null=自动检索全部）
+    auto_collect: bool = False  # F2：本次分析附带多平台采集入库（前端默认传 false）
 
 
 def llm_is_available(llm_config: dict | None = None) -> bool:
