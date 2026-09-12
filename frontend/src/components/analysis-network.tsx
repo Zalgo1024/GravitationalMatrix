@@ -1,13 +1,23 @@
 "use client";
 
-import { AlertTriangle, ExternalLink, FileText, LocateFixed, Network as NetworkIcon, Search, ZoomIn, ZoomOut } from "lucide-react";
+import { AlertTriangle, Circle, ExternalLink, FileText, Filter, Globe2, LocateFixed, Network as NetworkIcon, Search, Share2, ZoomIn, ZoomOut } from "lucide-react";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "@/lib/api";
 import type { MaterialRecord, ResearchBundle, ResearchSnapshotStatus } from "@/lib/domain";
 import { collectReportEvidence, enrichDiagramWithResearch, findResearchNode, findResearchRelation, parseReportGraphs, type DiagramDocument } from "@/lib/report-graph";
+import type { GraphLayout } from "@/lib/graph-layout";
 import { GraphCanvas, type GraphCanvasHandle, type GraphSelection } from "@/components/graph-canvas";
+import { EMPTY_FILTERS, applyGraphFilters, collectInterestOptions, collectRegionOptions, computeDimmedIds, isFilterActive, type GraphFilterState } from "@/lib/graph-filters";
 
 type LoadState = "loading" | "ready" | "missing" | "error";
+
+const graphStatusLabels: Record<string, string> = { confirmed: "已确认", inferred: "推测", conflicted: "存疑" };
+
+const layoutOptions: { id: GraphLayout; label: string; hint: string; Icon: typeof Share2 }[] = [
+  { id: "force", label: "力导向", hint: "按关系疏密自动排布，看整体结构", Icon: Share2 },
+  { id: "ring", label: "环形分组", hint: "按主体类型分区，看利益构成", Icon: Circle },
+  { id: "geo", label: "地理布局", hint: "按主体所属省份摆位，看空间分布", Icon: Globe2 },
+];
 
 const vizLabels: Record<DiagramDocument["viz"], string> = {
   network: "关系网络",
@@ -45,6 +55,9 @@ export function AnalysisNetwork({ taskId, markdown: currentMarkdown, materials =
   const [activeDiagramId, setActiveDiagramId] = useState("");
   const [selection, setSelection] = useState<GraphSelection>(null);
   const [query, setQuery] = useState("");
+  const [layout, setLayout] = useState<GraphLayout>("force");
+  const [filters, setFilters] = useState<GraphFilterState>(EMPTY_FILTERS);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [canvasError, setCanvasError] = useState<Error | null>(null);
   const [canvasAttempt, setCanvasAttempt] = useState(0);
   const canvasRef = useRef<GraphCanvasHandle>(null);
@@ -100,6 +113,26 @@ export function AnalysisNetwork({ taskId, markdown: currentMarkdown, materials =
     ? activeDiagram.nodes.filter((node) => node.label.toLocaleLowerCase("zh-CN").includes(query.trim().toLocaleLowerCase("zh-CN"))).slice(0, 8)
     : [];
 
+  const filteredDiagram = useMemo(
+    () => (activeDiagram ? applyGraphFilters(activeDiagram, filters) : undefined),
+    [activeDiagram, filters],
+  );
+  const dimmedNodeIds = useMemo(
+    () => (filteredDiagram ? computeDimmedIds(filteredDiagram, query) : new Set<string>()),
+    [filteredDiagram, query],
+  );
+  const regionOptions = useMemo(() => (activeDiagram ? collectRegionOptions(activeDiagram.nodes) : []), [activeDiagram]);
+  const interestOptions = useMemo(() => (activeDiagram ? collectInterestOptions(activeDiagram.edges) : []), [activeDiagram]);
+  const filterCount = (filters.interestTypes.length ? 1 : 0) + (filters.regionCodes.length ? 1 : 0) + (filters.statuses.length ? 1 : 0) + (filters.minStrength > 1 ? 1 : 0);
+  const hasEvidenceCounts = Boolean(activeDiagram?.nodes.some((node) => (node.evidenceCount ?? 0) > 0));
+
+  function toggleInList(key: "interestTypes" | "regionCodes" | "statuses", value: string) {
+    setFilters((current) => {
+      const list = current[key];
+      return { ...current, [key]: list.includes(value) ? list.filter((item) => item !== value) : [...list, value] };
+    });
+  }
+
   const handleSelection = useCallback((next: GraphSelection) => setSelection(next), []);
   const handleCanvasError = useCallback((error: Error) => setCanvasError(error), []);
 
@@ -120,6 +153,7 @@ export function AnalysisNetwork({ taskId, markdown: currentMarkdown, materials =
   if (state !== "ready" || !markdown) return <div className="workbench-network"><NetworkIcon size={24} /><div><span className="eyebrow">关系图</span><h2>报告尚未生成</h2><p>分析任务完成后，这里会读取报告中的真实 DIAGRAM 数据。</p></div></div>;
   if (!activeDiagram) return <div className="workbench-network"><NetworkIcon size={24} /><div><span className="eyebrow">关系图</span><h2>未发现可用关系图</h2><p>当前报告没有合法的 DIAGRAM 数据。页面不会根据正文自行补造主体或关系。</p>{parsed.warnings.length > 0 && <span className="graph-warning-count"><AlertTriangle size={14} />{parsed.warnings.length} 项图谱数据未能解析</span>}</div></div>;
 
+  const geoLocated = activeDiagram.nodes.filter((node) => node.regionCode).length;
   const inbound = selectedNode ? activeDiagram.edges.filter((edge) => edge.target === selectedNode.id) : [];
   const outbound = selectedNode ? activeDiagram.edges.filter((edge) => edge.source === selectedNode.id) : [];
   const edgeSource = selectedEdge ? activeDiagram.nodes.find((node) => node.id === selectedEdge.source) : null;
@@ -140,7 +174,7 @@ export function AnalysisNetwork({ taskId, markdown: currentMarkdown, materials =
         <div>
           <span className="eyebrow">结构图谱</span>
           <h2>{activeDiagram.title}</h2>
-          <p>{activeDiagram.nodes.length} 个节点 · {activeDiagram.edges.length} 条关系 · {vizLabels[activeDiagram.viz]}</p>
+          <p>{filteredDiagram && isFilterActive(filters) ? `筛出 ${filteredDiagram.nodes.length}/${activeDiagram.nodes.length} 个主体 · ${filteredDiagram.edges.length}/${activeDiagram.edges.length} 条关系` : `${activeDiagram.nodes.length} 个节点 · ${activeDiagram.edges.length} 条关系`} · {vizLabels[activeDiagram.viz]}</p>
         </div>
         {parsed.warnings.length > 0 && <span className="graph-warning-count"><AlertTriangle size={14} />{parsed.warnings.length} 项图谱数据已跳过</span>}
       </header>
@@ -151,10 +185,68 @@ export function AnalysisNetwork({ taskId, markdown: currentMarkdown, materials =
         </div>
       )}
 
+      <div className="graph-filter-bar">
+        <button type="button" className={filtersOpen || filterCount ? "graph-filter-toggle graph-filter-toggle--active" : "graph-filter-toggle"} aria-expanded={filtersOpen} onClick={() => setFiltersOpen((open) => !open)}>
+          <Filter size={14} />筛选{filterCount ? ` · ${filterCount}` : ""}
+        </button>
+        <span className="graph-filter-summary">
+          {isFilterActive(filters) ? `强度 ≥ ${filters.minStrength}${filters.interestTypes.length ? ` · ${filters.interestTypes.map((item) => interestTypeLabels[item] ?? item).join("、")}` : ""}${filters.statuses.length ? ` · ${filters.statuses.map((item) => graphStatusLabels[item] ?? item).join("、")}` : ""}${filters.regionCodes.length ? ` · ${filters.regionCodes.length} 个属地` : ""}` : "默认显示全部主体与关系"}
+        </span>
+        {isFilterActive(filters) && <button type="button" className="graph-filter-clear" onClick={() => setFilters(EMPTY_FILTERS)}>清空</button>}
+      </div>
+
+      {filtersOpen && <div className="graph-filter-panel">
+        <div className="graph-filter-group">
+          <strong>关系强度</strong>
+          <label className="graph-strength">
+            <input type="range" min={1} max={5} step={1} value={filters.minStrength} aria-label="关系强度阈值" onChange={(event) => setFilters((current) => ({ ...current, minStrength: Number(event.target.value) }))} />
+            <span>≥ {filters.minStrength} / 5</span>
+          </label>
+        </div>
+        <div className="graph-filter-group">
+          <strong>关系状态</strong>
+          <div className="graph-filter-chips">
+            {Object.entries(graphStatusLabels).map(([id, label]) => (
+              <button type="button" key={id} aria-pressed={filters.statuses.includes(id)} className={filters.statuses.includes(id) ? "graph-chip graph-chip--active" : "graph-chip"} onClick={() => toggleInList("statuses", id)}>{label}</button>
+            ))}
+          </div>
+        </div>
+        {interestOptions.length > 0 && <div className="graph-filter-group">
+          <strong>利益类型</strong>
+          <div className="graph-filter-chips">
+            {interestOptions.map((option) => (
+              <button type="button" key={option.id} aria-pressed={filters.interestTypes.includes(option.id)} className={filters.interestTypes.includes(option.id) ? "graph-chip graph-chip--active" : "graph-chip"} onClick={() => toggleInList("interestTypes", option.id)}>{interestTypeLabels[option.id] ?? option.id}<em>{option.count}</em></button>
+            ))}
+          </div>
+        </div>}
+        {regionOptions.length > 0 && <div className="graph-filter-group">
+          <strong>属地</strong>
+          <div className="graph-filter-chips">
+            {regionOptions.map((option) => (
+              <button type="button" key={option.code} aria-pressed={filters.regionCodes.includes(option.code)} className={filters.regionCodes.includes(option.code) ? "graph-chip graph-chip--active" : "graph-chip"} onClick={() => toggleInList("regionCodes", option.code)}>{option.name}<em>{option.count}</em></button>
+            ))}
+          </div>
+        </div>}
+      </div>}
+
       <div className="graph-workspace">
         <section className="graph-stage" aria-label="关系图画布工具">
           <div className="graph-toolbar">
             <label className="graph-search"><Search size={15} /><input type="search" aria-label="搜索图谱节点" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索节点" /></label>
+            <div className="graph-layout-switch" role="group" aria-label="布局切换">
+              {layoutOptions.map(({ id, label, hint, Icon }) => (
+                <button
+                  key={id}
+                  type="button"
+                  aria-pressed={layout === id}
+                  title={hint}
+                  className={layout === id ? "graph-layout-button graph-layout-button--active" : "graph-layout-button"}
+                  onClick={() => setLayout(id)}
+                >
+                  <Icon size={14} />{label}
+                </button>
+              ))}
+            </div>
             <div className="graph-toolbar__actions">
               <button type="button" aria-label="适应视口" title="适应视口" onClick={() => canvasRef.current?.fit()}><LocateFixed size={16} /></button>
               <button type="button" aria-label="放大图谱" title="放大" onClick={() => canvasRef.current?.zoomIn()}><ZoomIn size={16} /></button>
@@ -162,18 +254,22 @@ export function AnalysisNetwork({ taskId, markdown: currentMarkdown, materials =
             </div>
             {searchMatches.length > 0 && <div className="graph-search-results">{searchMatches.map((node) => <button type="button" aria-label={`定位节点 ${node.label}`} onClick={() => focusNode(node.id)} key={node.id}><span className={`graph-node-dot graph-node-dot--${node.type}`} />{node.label}</button>)}</div>}
           </div>
+          {layout === "geo" && <p className="graph-geo-hint" role="status"><Globe2 size={13} />{geoLocated > 0 ? `已定位 ${geoLocated}/${activeDiagram.nodes.length} 个主体的属地，其余排到右侧「未知地域」列。` : "本版研究账本没有可用的属地信息，全部节点已排到右侧「未知地域」列。可先重建研究账本再回来看空间分布。"}</p>}
           {canvasError ? <div className="graph-runtime-error" role="alert"><AlertTriangle size={23} /><div><span className="eyebrow">图谱运行时错误</span><h3>关系图暂时无法绘制</h3><p>报告数据仍然保留，可以重新初始化当前画布。</p><button type="button" className="secondary-button" onClick={() => { setCanvasAttempt((value) => value + 1); setCanvasError(null); }}>重试绘制</button></div></div> : <>
-            <GraphCanvas key={`${activeDiagram.id}-${canvasAttempt}`} ref={canvasRef} diagram={activeDiagram} onSelectionChange={handleSelection} onError={handleCanvasError} />
-            <div className="graph-legend" aria-label="关系类型图例">
-              {Object.entries(edgeTypeLabels).map(([type, label]) => <span key={type}><i className={`graph-edge-key graph-edge-key--${type}`} />{label}</span>)}
+            <GraphCanvas key={`${activeDiagram.id}-${layout}-${canvasAttempt}`} ref={canvasRef} diagram={filteredDiagram ?? activeDiagram} layout={layout} dimmedNodeIds={dimmedNodeIds} onSelectionChange={handleSelection} onError={handleCanvasError} />
+            <div className="graph-legend" aria-label="图谱编码图例">
+              <span className="graph-legend__group"><em>颜色</em>{Object.entries(edgeTypeLabels).map(([type, label]) => <span key={type}><i className={`graph-edge-key graph-edge-key--${type}`} />{label}</span>)}</span>
+              <span className="graph-legend__group"><em>方向与正负</em><span><i className="graph-edge-key graph-edge-key--positive" />正向</span><span><i className="graph-edge-key graph-edge-key--negative" />负向</span></span>
+              <span className="graph-legend__group"><em>线型</em><span><i className="graph-edge-key graph-edge-key--solid" />已确认</span><span><i className="graph-edge-key graph-edge-key--inferred" />推测</span><span><i className="graph-edge-key graph-edge-key--cross" />跨省</span></span>
+              <span className="graph-legend__group"><em>大小</em><span className="graph-legend__note">{hasEvidenceCounts ? "节点越大 = 证据越多" : "本版账本没有证据计数，节点按权重显示"}</span></span>
             </div>
           </>}
         </section>
 
         <aside className="graph-inspector">
           {selectedNode ? <>
-            <span className="eyebrow">选中主体</span><h3>{selectedNode.label}</h3><p>{nodeTypeLabels[selectedNode.type] ?? selectedNode.type}</p>
-            <div className="graph-inspector__stats"><span>流入 <strong>{inbound.length}</strong></span><span>流出 <strong>{outbound.length}</strong></span></div>
+            <span className="eyebrow">选中主体</span><h3>{selectedNode.label}</h3><p>{nodeTypeLabels[selectedNode.type] ?? selectedNode.type}{selectedNode.regionName ? ` · ${selectedNode.regionName}` : ""}{selectedNode.regionName && selectedNode.regionSource === "evidence_majority" ? "（由证据来源推断）" : ""}</p>
+            <div className="graph-inspector__stats"><span>流入 <strong>{inbound.length}</strong></span><span>流出 <strong>{outbound.length}</strong></span>{selectedNode.evidenceCount !== undefined && <span>证据 <strong>{selectedNode.evidenceCount}</strong></span>}</div>
             {selectedProfile && <div className="graph-node-dossier"><div><strong>{selectedProfile.role || "角色待确认"}</strong><span>权重 {Math.round(selectedProfile.weight * 100)}%</span></div><dl><div><dt>核心利益</dt><dd>{selectedProfile.interests.length ? selectedProfile.interests.join("、") : "未知"}</dd></div><div><dt>当前立场</dt><dd>{selectedProfile.stance || "未知"}</dd></div><div><dt>置信度</dt><dd>{selectedProfile.confidence === "high" ? "高" : selectedProfile.confidence === "medium" ? "中" : selectedProfile.confidence === "low" ? "低" : "未知"}</dd></div><div><dt>观察区间</dt><dd>{selectedProfile.firstSeen || "未知"} 至 {selectedProfile.lastSeen || "现在"}</dd></div></dl>{selectedNodeSources.length > 0 && <div className="graph-node-sources"><strong>主体证据</strong>{selectedNodeSources.map((source) => source.url ? <a href={source.url} target="_blank" rel="noreferrer" key={source.id}>{source.title}<ExternalLink size={12} /></a> : <span key={source.id}>{source.title}</span>)}</div>}</div>}
             <div className="graph-relation-list">{[...inbound, ...outbound].map((edge) => <button type="button" onClick={() => setSelection({ kind: "edge", id: edge.id })} key={edge.id}><strong>{edge.label}</strong><span>{activeDiagram.nodes.find((node) => node.id === edge.source)?.label} → {activeDiagram.nodes.find((node) => node.id === edge.target)?.label}</span></button>)}</div>
           </> : selectedEdge ? <>

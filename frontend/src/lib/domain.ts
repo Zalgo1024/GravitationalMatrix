@@ -131,6 +131,7 @@ export interface ResearchRelation {
   validFrom?: string;
   validTo?: string;
   evidenceCount?: number;
+  crossRegion?: boolean | null;
 }
 
 export interface ResearchStancePoint {
@@ -152,6 +153,9 @@ export interface ResearchNode {
   firstSeen?: string;
   lastSeen?: string;
   stanceHistory: ResearchStancePoint[];
+  regionCode?: string | null;
+  regionName?: string | null;
+  regionSource?: string;
 }
 
 export interface ResearchTimelineEvent {

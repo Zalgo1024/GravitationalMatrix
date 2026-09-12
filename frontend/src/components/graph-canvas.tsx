@@ -3,6 +3,8 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import { DataSet, Network, type Edge, type Node, type Options } from "vis-network/standalone";
 import type { DiagramDocument } from "@/lib/report-graph";
+import { layoutPositions, type GraphLayout } from "@/lib/graph-layout";
+import { provinceBadge } from "@/lib/province-centers";
 
 export type GraphSelection =
   | { kind: "node"; id: string }
@@ -18,6 +20,12 @@ export interface GraphCanvasHandle {
 
 interface GraphCanvasProps {
   diagram: DiagramDocument;
+  layout?: GraphLayout;
+  /** 被筛选器排除的节点（连同其边一起隐藏） */
+  hiddenNodeIds?: ReadonlySet<string>;
+  /** 未命中搜索/筛选的节点：保留但淡出，避免「图突然变空」的错愕 */
+  dimmedNodeIds?: ReadonlySet<string>;
+  focusEdgeId?: string | null;
   onSelectionChange: (selection: GraphSelection) => void;
   onError?: (error: Error) => void;
 }
@@ -62,7 +70,7 @@ const edgeDashes: Record<string, false | number[]> = {
   unknown: [2, 6],
 };
 
-export function buildGraphOptions(diagram: DiagramDocument): Options {
+export function buildGraphOptions(diagram: DiagramDocument, layout: GraphLayout = "force"): Options {
   const hierarchical = diagram.viz === "org"
     ? { enabled: true, direction: "UD" as const, sortMethod: "directed" as const, levelSeparation: 120, nodeSpacing: 145, treeSpacing: 190 }
     : diagram.viz === "flow"
@@ -72,8 +80,9 @@ export function buildGraphOptions(diagram: DiagramDocument): Options {
   return {
     autoResize: true,
     interaction: { hover: true, navigationButtons: false, keyboard: { enabled: true }, multiselect: false },
-    layout: hierarchical ? { hierarchical } : { improvedLayout: true },
-    physics: diagram.viz === "network"
+    layout: hierarchical ? { hierarchical } : { improvedLayout: layout === "force" },
+    // 环形/地理布局用预计算坐标，物理引擎必须关掉，否则节点会漂走
+    physics: diagram.viz === "network" && layout === "force"
       ? { enabled: true, stabilization: { enabled: true, iterations: 280, updateInterval: 30 }, barnesHut: { gravitationalConstant: -5200, springLength: 155, springConstant: 0.035 } }
       : { enabled: false },
     nodes: {
@@ -102,41 +111,92 @@ function escapeTooltipText(value: unknown): string {
   return String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-export function buildGraphData(diagram: DiagramDocument): { nodes: Node[]; edges: Edge[] } {
-  const nodes: Node[] = diagram.nodes.map((node) => {
-    const color = nodeColors[node.type] ?? nodeColors.actor;
-    const weight = Math.max(0, Math.min(1, node.weight ?? 0.5));
-    return { id: node.id, label: node.label, value: Math.round(10 + weight * 20), mass: 1 + weight * 2, title: `${escapeTooltipText(node.label)}\n类型：${escapeTooltipText(node.type)}\n权重：${Math.round(weight * 100)}%`, shape: nodeShapes[node.type] ?? "box", color: { ...color, highlight: { background: "#ffffff", border: color.border }, hover: { background: "#ffffff", border: color.border } } };
-  });
-  const edges: Edge[] = diagram.edges.map((edge) => {
-    const strength = Math.max(1, Math.min(5, edge.strength ?? 1));
-    const baseColor = edge.polarity === "negative" ? "#b34f43" : edge.polarity === "positive" ? "#258764" : edgeColors[edge.type] ?? edgeColors.unknown;
-    const arrows = edge.direction === "undirected"
-      ? { from: { enabled: false }, to: { enabled: false } }
-      : edge.direction === "mutual"
-        ? { from: { enabled: true }, to: { enabled: true } }
-        : { from: { enabled: false }, to: { enabled: true } };
-    return {
-      id: edge.id,
-      from: edge.source,
-      to: edge.target,
-      label: edge.label,
-      width: 1 + strength * 0.65,
-      arrows,
-      title: `${escapeTooltipText(edge.label)}\n类型：${escapeTooltipText(edge.type)}\n强度：${strength}/5\n状态：${escapeTooltipText(edge.relationStatus ?? "未知")}`,
-      color: { color: baseColor, highlight: baseColor, hover: baseColor },
-      dashes: edge.relationStatus === "inferred" ? [7, 5] : edgeDashes[edge.type] ?? edgeDashes.unknown,
-    };
-  });
+export interface GraphEncodingOptions {
+  layout?: GraphLayout;
+  hiddenNodeIds?: ReadonlySet<string>;
+  dimmedNodeIds?: ReadonlySet<string>;
+  focusEdgeId?: string | null;
+}
+
+const DIM_OPACITY = 0.18;
+
+export function buildGraphData(diagram: DiagramDocument, options: GraphEncodingOptions = {}): { nodes: Node[]; edges: Edge[] } {
+  const { layout = "force", hiddenNodeIds, dimmedNodeIds, focusEdgeId } = options;
+  const positions = layoutPositions(diagram.nodes, layout);
+  const maxEvidence = Math.max(1, ...diagram.nodes.map((node) => node.evidenceCount ?? 0));
+
+  const nodes: Node[] = diagram.nodes
+    .filter((node) => !hiddenNodeIds?.has(node.id))
+    .map((node) => {
+      const color = nodeColors[node.type] ?? nodeColors.actor;
+      const weight = Math.max(0, Math.min(1, node.weight ?? 0.5));
+      const evidence = node.evidenceCount ?? 0;
+      // 节点大小 = 证据数（无证据数字段时退回权重，老报告不塌缩成一个点）
+      const size = evidence > 0 ? 12 + (evidence / maxEvidence) * 26 : Math.round(10 + weight * 20);
+      const badge = provinceBadge(node.regionName);
+      const label = badge ? `${node.label} · ${badge}` : node.label;
+      const regionLine = node.regionName ? `\n属地：${escapeTooltipText(node.regionName)}` : "";
+      const dimmed = Boolean(dimmedNodeIds?.has(node.id));
+      const point = positions?.get(node.id);
+      return {
+        id: node.id,
+        label,
+        value: size,
+        mass: 1 + weight * 2,
+        title: `${escapeTooltipText(node.label)}\n类型：${escapeTooltipText(node.type)}\n权重：${Math.round(weight * 100)}%\n证据：${evidence} 条${regionLine}`,
+        shape: nodeShapes[node.type] ?? "box",
+        ...(point ? { x: point.x, y: point.y, fixed: false } : {}),
+        color: {
+          ...color,
+          ...(dimmed ? { opacity: DIM_OPACITY } : {}),
+          highlight: { background: "#ffffff", border: color.border },
+          hover: { background: "#ffffff", border: color.border },
+        },
+        font: dimmed ? { color: "rgba(29, 43, 60, 0.35)" } : undefined,
+      } as Node;
+    });
+
+  const visibleIds = new Set(nodes.map((node) => String(node.id)));
+  const edges: Edge[] = diagram.edges
+    .filter((edge) => visibleIds.has(edge.source) && visibleIds.has(edge.target))
+    .map((edge) => {
+      const strength = Math.max(1, Math.min(5, edge.strength ?? 1));
+      const baseColor = edge.polarity === "negative" ? "#b34f43" : edge.polarity === "positive" ? "#258764" : edgeColors[edge.type] ?? edgeColors.unknown;
+      const arrows = edge.direction === "undirected"
+        ? { from: { enabled: false }, to: { enabled: false } }
+        : edge.direction === "mutual"
+          ? { from: { enabled: true }, to: { enabled: true } }
+          : { from: { enabled: false }, to: { enabled: true } };
+      const focused = focusEdgeId === edge.id;
+      const crossLine = edge.crossRegion ? "\n跨省关系" : "";
+      return {
+        id: edge.id,
+        from: edge.source,
+        to: edge.target,
+        label: edge.label,
+        // 边宽 = 强度；跨省边额外加粗一点以便与省内边区分
+        width: 1 + strength * 0.65 + (edge.crossRegion ? 0.8 : 0),
+        arrows,
+        title: `${escapeTooltipText(edge.label)}\n类型：${escapeTooltipText(edge.type)}\n强度：${strength}/5\n状态：${escapeTooltipText(edge.relationStatus ?? "未知")}${crossLine}`,
+        color: {
+          color: baseColor,
+          highlight: baseColor,
+          hover: baseColor,
+          opacity: focused ? 1 : dimmedNodeIds?.size ? 0.28 : 0.86,
+        },
+        // 跨省统一用长虚线；推测关系沿用短虚线（两者叠加时以跨省为准）
+        dashes: edge.crossRegion ? [14, 6] : edge.relationStatus === "inferred" ? [7, 5] : edgeDashes[edge.type] ?? edgeDashes.unknown,
+      };
+    });
   return { nodes, edges };
 }
 
-function graphData(diagram: DiagramDocument) {
-  const data = buildGraphData(diagram);
+function graphData(diagram: DiagramDocument, options: GraphEncodingOptions) {
+  const data = buildGraphData(diagram, options);
   return { nodes: new DataSet<Node>(data.nodes), edges: new DataSet<Edge>(data.edges) };
 }
 
-export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(function GraphCanvas({ diagram, onSelectionChange, onError }, ref) {
+export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(function GraphCanvas({ diagram, layout = "force", hiddenNodeIds, dimmedNodeIds, focusEdgeId, onSelectionChange, onError }, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const networkRef = useRef<Network | null>(null);
 
@@ -164,12 +224,19 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(funct
     if (!containerRef.current) return;
     let network: Network;
     try {
-      network = new Network(containerRef.current, graphData(diagram), buildGraphOptions(diagram));
+      network = new Network(containerRef.current, graphData(diagram, { layout, hiddenNodeIds, dimmedNodeIds, focusEdgeId }), buildGraphOptions(diagram, layout));
     } catch (error) {
       onError?.(error instanceof Error ? error : new Error("关系图运行时初始化失败"));
       return;
     }
     networkRef.current = network;
+    if (focusEdgeId) {
+      try {
+        network.selectEdges([focusEdgeId]);
+      } catch {
+        // 边因筛选被隐藏时忽略，不打断渲染
+      }
+    }
     network.on("selectNode", (event) => onSelectionChange(event.nodes?.[0] ? { kind: "node", id: String(event.nodes[0]) } : null));
     network.on("selectEdge", (event) => {
       if (!event.nodes?.length && event.edges?.[0]) onSelectionChange({ kind: "edge", id: String(event.edges[0]) });
@@ -180,7 +247,7 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(funct
       network.destroy();
       networkRef.current = null;
     };
-  }, [diagram, onError, onSelectionChange]);
+  }, [diagram, layout, hiddenNodeIds, dimmedNodeIds, focusEdgeId, onError, onSelectionChange]);
 
   return <div ref={containerRef} className="graph-canvas" role="img" aria-label={diagram.title} tabIndex={0} />;
 });

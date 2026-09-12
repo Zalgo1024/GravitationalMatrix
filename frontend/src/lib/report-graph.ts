@@ -11,6 +11,10 @@ export interface DiagramNode {
   interests?: string[];
   stance?: string;
   confidence?: string;
+  regionCode?: string | null;
+  regionName?: string | null;
+  regionSource?: string;
+  evidenceCount?: number;
 }
 
 export interface DiagramEdge {
@@ -27,6 +31,7 @@ export interface DiagramEdge {
   direction?: string;
   polarity?: string;
   relationStatus?: ResearchRelation["status"];
+  crossRegion?: boolean | null;
 }
 
 export interface DiagramDocument {
@@ -204,7 +209,18 @@ export function enrichDiagramWithResearch(diagram: DiagramDocument, research?: R
     ...diagram,
     nodes: diagram.nodes.map((node) => {
       const profile = findResearchNode(node, research);
-      return profile ? { ...node, weight: profile.weight, role: profile.role, interests: profile.interests, stance: profile.stance, confidence: profile.confidence } : node;
+      return profile ? {
+        ...node,
+        weight: profile.weight,
+        role: profile.role,
+        interests: profile.interests,
+        stance: profile.stance,
+        confidence: profile.confidence,
+        regionCode: profile.regionCode ?? null,
+        regionName: profile.regionName ?? null,
+        regionSource: profile.regionSource,
+        evidenceCount: (profile.evidenceIds ?? []).length,
+      } : node;
     }),
     edges: diagram.edges.map((edge) => {
       const relation = findResearchRelation(edge, research);
@@ -215,6 +231,7 @@ export function enrichDiagramWithResearch(diagram: DiagramDocument, research?: R
         direction: relation.direction,
         polarity: relation.polarity,
         relationStatus: relation.status,
+        crossRegion: relation.crossRegion ?? null,
       } : edge;
     }),
   };
