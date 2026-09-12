@@ -83,7 +83,7 @@ def test_generate_and_export_orchestrates_and_is_compatible(tmp_path):
     assert out["degraded_from_llm"] is False
     # 新增 network 阶段产物
     assert out["network"]["valid"] is True
-    assert out["research"]["schema_version"] == "1.3"
+    assert out["research"]["schema_version"] == "1.4"
     assert out["research"]["status"] == "fallback"
     # 引擎导出契约字段
     assert isinstance(out.get("pdf_available"), bool)

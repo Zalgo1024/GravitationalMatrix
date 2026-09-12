@@ -197,6 +197,28 @@ def valid_region_codes(codes: list[str] | None) -> list[str]:
     return out
 
 
+def province_of(code: str | None) -> str | None:
+    """把省码或市码归一到省级码（市码取其所属省）；无法识别返回 None。"""
+    value = str(code or "").strip()
+    if not value:
+        return None
+    city_index, prov_by_code = _ensure_city_index()
+    if value in prov_by_code:
+        return value
+    for _alias, (ccode, _cname, pcode) in city_index.items():
+        if ccode == value:
+            return pcode
+    return None
+
+
+def province_name(code: str | None) -> str | None:
+    """省级码 → 省名；无法识别返回 None。"""
+    pcode = province_of(code)
+    if not pcode:
+        return None
+    return _ensure_city_index()[1].get(pcode)
+
+
 def region_scope_names(codes: list[str] | None) -> list[str]:
     """把 region_scope 码值解析为「XX省（XX市、XX市）」可读名（提示词注入用）。"""
     if not codes:

@@ -15,6 +15,8 @@ from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.connectors.regions import province_name, province_of, recognize_region_detailed
+
 
 Confidence = Literal["high", "medium", "low", "unknown"]
 
@@ -83,6 +85,8 @@ class ResearchRelation(BaseModel):
     valid_from: str | None = None
     valid_to: str | None = None
     evidence_count: int = 0
+    # 两端主体归属省份不同 → True，相同 → False，任一端未知 → None（不猜）
+    cross_region: bool | None = None
 
 
 class ResearchStancePoint(BaseModel):
@@ -108,6 +112,10 @@ class ResearchNode(BaseModel):
     first_seen: str | None = None
     last_seen: str | None = None
     stance_history: list[ResearchStancePoint] = Field(default_factory=list)
+    # 地域：优先模型给定，否则由该主体证据来源的省级多数派派生（F12 地理布局用）
+    region_code: str | None = None
+    region_name: str | None = None
+    region_source: Literal["model", "evidence_majority", "unknown"] = "unknown"
 
 
 class ResearchTimelineEvent(BaseModel):
@@ -261,12 +269,15 @@ class ResearchMetrics(BaseModel):
     unknown_quantitative_count: int = 0
     narrative_count: int = 0
     policy_clause_count: int = 0
+    # 有明确省级归属的主体占比（F12 地理布局可解释性：太低说明摆不上去）
+    node_region_coverage: float = 0.0
+    cross_region_relation_count: int = 0
 
 
 class ResearchLedger(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
-    schema_version: str = "1.3"
+    schema_version: str = "1.4"
     # ``fallback`` means the generation path degraded. ``no_evidence`` means
     # the report was generated normally but no verifiable source was supplied.
     # ``extraction_failed`` means sources existed but ledger extraction failed.
@@ -360,6 +371,7 @@ def _classify_source(source_type: str, title: str, url: str) -> tuple[str, str, 
 def _metrics(
     sources: list[ResearchSource],
     claims: list[ResearchClaim],
+    nodes: list[ResearchNode],
     relations: list[ResearchRelation],
     gaps: list[ResearchGap],
     timeline: list[ResearchTimelineEvent],
@@ -412,7 +424,52 @@ def _metrics(
         unknown_quantitative_count=sum(1 for item in quantitative_observations if item.status == "unknown"),
         narrative_count=len(narratives),
         policy_clause_count=len(policy_clauses),
+        node_region_coverage=round(
+            sum(1 for node in nodes if node.region_code) / len(nodes), 3
+        ) if nodes else 0.0,
+        cross_region_relation_count=sum(1 for relation in relations if relation.cross_region),
     )
+
+
+def _derive_node_regions(nodes: list[ResearchNode], sources: list[ResearchSource]) -> None:
+    """给主体补省级归属：模型已给的不动，其余用「证据来源地域多数派」派生。
+
+    纯派生、零 LLM 调用——与 F10/F11 的地域口径共用 recognize_region_detailed，
+    因此同一份报告在图、表、地图上得到的省是一致的。票数相同时取先出现者，
+    保证结果稳定可复现（dict 保持插入序）。
+    """
+    source_by_id = {source.id: source for source in sources}
+    for node in nodes:
+        if node.region_code and node.region_source == "model":
+            continue
+        tally: dict[str, int] = {}
+        for evidence_id in node.evidence_ids:
+            source = source_by_id.get(evidence_id)
+            if source is None or source.duplicate_of:
+                continue
+            detail = recognize_region_detailed(f"{source.title} {source.excerpt}".strip())
+            code = province_of(detail.get("region_code"))
+            if not code:
+                continue
+            tally[code] = tally.get(code, 0) + 1
+        if not tally:
+            continue
+        best = max(tally.items(), key=lambda item: item[1])[0]
+        node.region_code = best
+        node.region_name = province_name(best) or best
+        node.region_source = "evidence_majority"
+
+
+def _derive_cross_region(nodes: list[ResearchNode], relations: list[ResearchRelation]) -> None:
+    """关系跨省标记：两端省份已知且不同 → True，相同 → False，任一端未知 → None（不猜）。"""
+    by_id = {node.id: node for node in nodes}
+    for relation in relations:
+        source = by_id.get(relation.source_node)
+        target = by_id.get(relation.target_node)
+        if not source or not target or not source.region_code or not target.region_code:
+            relation.cross_region = None
+            continue
+        relation.cross_region = source.region_code != target.region_code
 
 
 def _system_quantitative_observations(
@@ -614,6 +671,8 @@ def normalize_research_ledger(payload: dict) -> ResearchLedger:
             weight = max(0.0, min(1.0, float(raw.get("weight", 0.5))))
         except (TypeError, ValueError):
             weight = 0.5
+        # 地域：模型可给，但必须落在码表内才采信（市码归一到省）
+        model_region = province_of(raw.get("region_code"))
         nodes.append(
             ResearchNode(
                 id=node_id,
@@ -628,6 +687,9 @@ def normalize_research_ledger(payload: dict) -> ResearchLedger:
                 first_seen=str(raw.get("first_seen") or "").strip() or None,
                 last_seen=str(raw.get("last_seen") or "").strip() or None,
                 stance_history=history,
+                region_code=model_region,
+                region_name=province_name(model_region) if model_region else None,
+                region_source="model" if model_region else "unknown",
             )
         )
 
@@ -916,8 +978,12 @@ def normalize_research_ledger(payload: dict) -> ResearchLedger:
         )
     # 条款保持 payload 原序（条款号有天然顺序，不重排）
 
+    # —— 账本 1.4：主体地域派生 + 关系跨省标记（F12 地理布局用，纯派生零 LLM）——
+    _derive_node_regions(nodes, sources)
+    _derive_cross_region(nodes, relations)
+
     return ResearchLedger(
-        schema_version="1.3",
+        schema_version="1.4",
         status=(
             payload.get("status")
             if payload.get("status") in {"fallback", "no_evidence", "extraction_failed"}
@@ -937,6 +1003,7 @@ def normalize_research_ledger(payload: dict) -> ResearchLedger:
         metrics=_metrics(
             sources,
             claims,
+            nodes,
             relations,
             gaps,
             timeline,
