@@ -156,6 +156,7 @@ export interface ResearchNode {
   regionCode?: string | null;
   regionName?: string | null;
   regionSource?: string;
+  behavior?: string | null;
 }
 
 export interface ResearchTimelineEvent {

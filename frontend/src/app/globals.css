@@ -1114,6 +1114,35 @@ html[data-theme="dark"] .editor-source textarea { background: oklch(.185 .014 25
 
 /* P2: comparative research, transparent quantities and repeatable evaluation. */
 .research-comparison, .quantitative-evidence, .research-benchmark { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: var(--surface); margin-top: 18px; padding: 20px 22px; }
+/* F-actor 主体视角：每主体一卡（利益/行为逻辑/所作所为/立场演变） */
+.actor-perspectives { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: var(--surface); margin-top: 18px; padding: 20px 22px; }
+.actor-perspectives > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+.actor-perspectives > header h2 { margin: 4px 0 0; font-size: 18px; }
+.actor-perspectives > header p { margin: 6px 0 0; color: var(--ink-muted); font-size: 10px; line-height: 1.6; max-width: 70ch; }
+.actor-perspectives__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 13px; margin-top: 15px; }
+.actor-perspectives__grid > article { display: flex; flex-direction: column; gap: 11px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); padding: 14px 16px; }
+.actor-perspectives__grid > article > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.actor-perspectives__grid small { color: var(--ink-muted); font-size: 9px; }
+.actor-perspectives__grid h3 { margin: 3px 0 0; font-size: 14.5px; line-height: 1.4; }
+.actor-perspectives__stance { flex-shrink: 0; border: 1px solid var(--line); border-radius: 4px; color: var(--ink-muted); font-size: 9px; padding: 3px 7px; white-space: nowrap; }
+.actor-perspectives__stance--against { border-color: #b34f43; color: #b34f43; }
+.actor-perspectives__block { display: grid; gap: 6px; }
+.actor-perspectives__block > strong { display: inline-flex; align-items: center; gap: 5px; color: var(--ink); font-size: 10px; }
+.actor-perspectives__block > p { margin: 0; color: var(--ink-muted); font-size: 10.5px; line-height: 1.7; }
+.actor-perspectives__interests { display: flex; flex-wrap: wrap; gap: 5px; }
+.actor-perspectives__interests span { border: 1px solid var(--line); border-radius: 999px; color: var(--ink-muted); font-size: 9.5px; padding: 3px 9px; }
+.actor-perspectives__block ol { display: grid; gap: 7px; margin: 0; padding: 0 0 0 16px; }
+.actor-perspectives__block ol li { display: grid; gap: 2px; color: var(--ink-muted); font-size: 10.5px; line-height: 1.55; }
+.actor-perspectives__block ol li span { color: var(--ink); }
+.actor-perspectives__shift { display: grid; gap: 5px; margin: 0; padding: 0; list-style: none; }
+.actor-perspectives__shift li { display: flex; align-items: baseline; gap: 9px; border-left: 2px solid var(--accent); padding: 0 0 0 9px; font-size: 10px; }
+.actor-perspectives__shift small { color: var(--ink-muted); font-variant-numeric: tabular-nums; }
+.actor-perspectives__grid footer { border-top: 1px solid var(--line); color: var(--ink-muted); font-size: 9px; margin-top: auto; padding-top: 8px; }
+.actor-perspectives__note { margin: 12px 0 0; color: var(--ink-muted); font-size: 10px; }
+.report-reader .actor-perspectives > header p, .report-reader .actor-perspectives__block > p, .report-reader .actor-perspectives__grid small, .report-reader .actor-perspectives__grid footer, .report-reader .actor-perspectives__note { font-size: 10px; }
+@media (max-width: 660px) {
+  .actor-perspectives__grid { grid-template-columns: 1fr; }
+}
 .research-comparison > header, .quantitative-evidence > header, .research-benchmark > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
 .research-comparison > header h2, .quantitative-evidence > header h2, .research-benchmark > header h2 { margin: 4px 0 0; font-size: 18px; }
 .research-comparison > header p, .quantitative-evidence > header p, .research-benchmark > header p { margin: 6px 0 0; color: var(--ink-muted); font-size: 10px; line-height: 1.6; }

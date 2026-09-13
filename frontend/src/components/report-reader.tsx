@@ -17,6 +17,7 @@ import { ResearchChangesPanel } from "./research-changes-panel";
 import { ResearchLedger } from "./research-ledger";
 import { ResearchTimeline } from "./research-timeline";
 import { ResearchComparison } from "./research-comparison";
+import { ActorPerspectives } from "./actor-perspectives";
 import { QuantitativeEvidence } from "./quantitative-evidence";
 import { ResearchBenchmark } from "./research-benchmark";
 import { ReportDataTables } from "./report-data-tables";
@@ -114,6 +115,7 @@ export function ReportReader({ report, task, onReload }: { report: Report; task?
     if (view === "research") {
       return [
         { id: "research-ledger", label: "关键判断与证据" },
+        { id: "research-actors", label: "主体视角" },
         { id: "research-timeline", label: "事件与立场变化" },
         { id: "research-comparison", label: "对照与反事实" },
         { id: "quantitative-evidence", label: "数字、口径与来源" },
@@ -246,6 +248,7 @@ export function ReportReader({ report, task, onReload }: { report: Report; task?
         ) : view === "research" ? (
           <>
             <div id="research-ledger" className="research-anchor"><ResearchLedger research={renderedResearch} status={renderedResearchStatus} onEnrich={() => setEnrichmentOpen(true)} /></div>
+            <div id="research-actors" className="research-anchor"><ActorPerspectives research={renderedResearch} /></div>
             <div id="research-timeline" className="research-anchor"><ResearchTimeline research={renderedResearch} /></div>
             <div id="research-comparison" className="research-anchor"><ResearchComparison research={renderedResearch} /></div>
             <div id="quantitative-evidence" className="research-anchor"><QuantitativeEvidence research={renderedResearch} /></div>
