@@ -116,6 +116,8 @@ class ResearchNode(BaseModel):
     region_code: str | None = None
     region_name: str | None = None
     region_source: Literal["model", "evidence_majority", "unknown"] = "unknown"
+    # 行为逻辑：该主体在此事件中的关键行为与动机概括（模型给，纯摘要不可编造）
+    behavior: str | None = None
 
 
 class ResearchTimelineEvent(BaseModel):
@@ -277,7 +279,7 @@ class ResearchMetrics(BaseModel):
 class ResearchLedger(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
-    schema_version: str = "1.4"
+    schema_version: str = "1.5"
     # ``fallback`` means the generation path degraded. ``no_evidence`` means
     # the report was generated normally but no verifiable source was supplied.
     # ``extraction_failed`` means sources existed but ledger extraction failed.
@@ -673,6 +675,8 @@ def normalize_research_ledger(payload: dict) -> ResearchLedger:
             weight = 0.5
         # 地域：模型可给，但必须落在码表内才采信（市码归一到省）
         model_region = province_of(raw.get("region_code"))
+        # 行为逻辑：只收摘要文本，超长截断（主体视角卡展示用，不是正文）
+        behavior = str(raw.get("behavior") or "").strip()[:600] or None
         nodes.append(
             ResearchNode(
                 id=node_id,
@@ -690,6 +694,7 @@ def normalize_research_ledger(payload: dict) -> ResearchLedger:
                 region_code=model_region,
                 region_name=province_name(model_region) if model_region else None,
                 region_source="model" if model_region else "unknown",
+                behavior=behavior,
             )
         )
 
@@ -978,12 +983,12 @@ def normalize_research_ledger(payload: dict) -> ResearchLedger:
         )
     # 条款保持 payload 原序（条款号有天然顺序，不重排）
 
-    # —— 账本 1.4：主体地域派生 + 关系跨省标记（F12 地理布局用，纯派生零 LLM）——
+    # —— 账本 1.5：主体地域派生 + 关系跨省标记 + 行为逻辑（纯派生零 LLM 部分）——
     _derive_node_regions(nodes, sources)
     _derive_cross_region(nodes, relations)
 
     return ResearchLedger(
-        schema_version="1.4",
+        schema_version="1.5",
         status=(
             payload.get("status")
             if payload.get("status") in {"fallback", "no_evidence", "extraction_failed"}

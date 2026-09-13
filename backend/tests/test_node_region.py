@@ -96,6 +96,23 @@ def test_cross_region_marks_difference_and_stays_unknown_when_missing():
     assert ledger.metrics.cross_region_relation_count == 1
 
 
+def test_behavior_summary_is_kept_and_truncated():
+    """账本 1.5：主体行为逻辑摘要——正常保留，超长截断，缺省为 None。"""
+    ledger = normalize_research_ledger(
+        {
+            "sources": [_source("s1", "广东省发改委通报")],
+            "nodes": [
+                _node("n1", "正常主体", ["s1"]) | {"behavior": "先申请奖补再扩大产能，行为逻辑是吃透政策窗口期。"},
+                _node("n2", "超长主体", ["s1"]) | {"behavior": "长" * 700},
+            ],
+            "relations": [],
+        }
+    )
+    by_id = {node.id: node for node in ledger.nodes}
+    assert by_id["n1"].behavior == "先申请奖补再扩大产能，行为逻辑是吃透政策窗口期。"
+    assert by_id["n2"].behavior is not None and len(by_id["n2"].behavior) == 600
+
+
 def test_legacy_1_3_snapshot_stays_region_free():
     """旧快照没有地域字段：不报错、不臆造，覆盖率如实为 0。"""
     ledger = normalize_research_ledger(

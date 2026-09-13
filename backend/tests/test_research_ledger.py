@@ -182,7 +182,7 @@ def test_source_intelligence_rates_sources_and_collapses_duplicate_evidence():
         }
     )
 
-    assert ledger.schema_version == "1.4"
+    assert ledger.schema_version == "1.5"
     assert ledger.sources[0].source_type == "official"
     assert ledger.sources[0].quality_tier == "A"
     assert ledger.sources[1].duplicate_of == "s1"
@@ -369,7 +369,7 @@ def test_p2_downgrades_unsupported_analogues_counterfactuals_and_numbers():
         }
     )
 
-    assert ledger.schema_version == "1.4"
+    assert ledger.schema_version == "1.5"
     assert ledger.analogues[0].confidence == "medium"
     assert ledger.analogues[1].confidence == "low"
     assert ledger.analogues[1].comparability == "unknown"
@@ -481,7 +481,7 @@ def test_narratives_share_requires_basis_and_evidence_or_downgrades():
         }
     )
 
-    assert ledger.schema_version == "1.4"
+    assert ledger.schema_version == "1.5"
     # 排序：有份额在前（份额降序），其余按 id 稳定排序
     assert [n.id for n in ledger.narratives] == ["nar1", "nar2", "nar3", "nar4", "nar5"]
     assert ledger.narratives[0].share == 0.45
