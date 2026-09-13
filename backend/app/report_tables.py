@@ -199,6 +199,45 @@ def ledger_rows(table_id: str, ledger: dict) -> list[list]:
 # 每个省回传的来源条目上限（点省浮层够看即可，避免 /geo 载荷膨胀）
 _GEO_ITEMS_PER_REGION = 8
 
+# 画报三性判定阈值：≥5 个省的独立源算「全国性」；无地域（平台型）独立源占比
+# ≥0.6 时主体是网络平台传播（热搜词条、论坛帖识别不到地域），算「纯网络传播」；
+# 其余（1–4 省）算「地区性」。阈值是口径不是真理，集中放在常量里便于调。
+_NATIONAL_PROVINCE_THRESHOLD = 5
+_ONLINE_SHARE_THRESHOLD = 0.6
+
+
+def classify_spread(regions: list[dict], located_indep: int, total_indep: int) -> dict:
+    """画报三性判定（纯派生零 LLM）：地区性 / 全国性 / 纯网络传播。
+
+    - online：有地域的独立源占比过低（含全部无地域）→ 主体在网络平台传播；
+    - national：独立源覆盖 ≥ _NATIONAL_PROVINCE_THRESHOLD 个省 → 全国性；
+    - regional：其余（集中在 1–4 个省）→ 地区性。
+    label 给面向用户的解释，数字口径（省数/占比）一并回传供画报展示。
+    """
+    online_indep = max(0, total_indep - located_indep)
+    online_share = round(online_indep / total_indep, 3) if total_indep else 0.0
+    province_count = len(regions)
+    if not total_indep or located_indep == 0 or online_share >= _ONLINE_SHARE_THRESHOLD:
+        overall = "online"
+    elif province_count >= _NATIONAL_PROVINCE_THRESHOLD:
+        overall = "national"
+    else:
+        overall = "regional"
+    labels = {
+        "regional": f"地区性舆情：来源集中在 {province_count} 个省份",
+        "national": f"全国性舆情：来源已扩散至 {province_count} 个省份",
+        "online": f"纯网络传播：{round(online_share * 100)}% 的独立来源无地域属性（平台型来源为主）",
+    }
+    return {
+        "overall": overall,
+        "label": labels[overall],
+        "province_count": province_count,
+        "independent_total": total_indep,
+        "located_total": located_indep,
+        "online_total": online_indep,
+        "online_share": online_share,
+    }
+
 
 def geo_aggregation(ledger: dict) -> dict:
     """F11 地图聚合（纯派生零 LLM）：来源按地域归并 → 独立源组计数 → 份额。
@@ -216,7 +255,7 @@ def geo_aggregation(ledger: dict) -> dict:
       无日期的组不进时间轴，前端负责做累计播放）。
     """
     if not isinstance(ledger, dict):
-        return {"regions": [], "coverage": 0.0, "polarity": []}
+        return {"regions": [], "coverage": 0.0, "polarity": [], "timeline": [], "classification": classify_spread([], 0, 0), "online_items": []}
     # 独立源组 -> [地域命中]；无组的来源按自身 id 兜底（各自独立）
     groups: dict[str, dict] = {}
     for s in ledger.get("sources") or []:
@@ -245,6 +284,7 @@ def geo_aggregation(ledger: dict) -> dict:
                 group["city_seen"].add(city_name)
 
     by_province: dict[str, dict] = {}
+    online_items: list[dict] = []
     total_indep = 0
     located_indep = 0
     monthly: dict[str, dict[str, int]] = {}
@@ -252,6 +292,19 @@ def geo_aggregation(ledger: dict) -> dict:
         total_indep += 1
         pcode, pname = group["province"]
         if not pcode:
+            # 无地域的独立源组 → 网络来源（画报的「纯网络传播」侧清单）
+            sample = group.get("sample")
+            if isinstance(sample, dict):
+                online_items.append({
+                    "id": str(sample.get("id") or ""),
+                    "title": str(sample.get("title") or "未命名来源"),
+                    "url": str(sample.get("url") or ""),
+                    "published_at": str(sample.get("published_at") or ""),
+                    "source_type": str(sample.get("source_type") or "unknown"),
+                    "city": str(group.get("city") or ""),
+                    "spread": "online",
+                    "province": "",
+                })
             continue
         located_indep += 1
         bucket = by_province.setdefault(
@@ -271,6 +324,9 @@ def geo_aggregation(ledger: dict) -> dict:
                 "published_at": str(sample.get("published_at") or ""),
                 "source_type": str(sample.get("source_type") or "unknown"),
                 "city": str(group.get("city") or ""),
+                # 来源级三性标注：能落到省 → 地方来源（regional）；落不到 → 网络来源（online）
+                "spread": "regional",
+                "province": pname,
             })
             month_match = re.match(r"^(\d{4}-\d{2})", str(sample.get("published_at") or ""))
             if month_match:
@@ -300,6 +356,8 @@ def geo_aggregation(ledger: dict) -> dict:
         )
     regions.sort(key=lambda r: (-r["independent_sources"], r["region_name"]))
     name_by_code = {bucket["region_code"]: bucket["region_name"] for bucket in by_province.values()}
+    classification = classify_spread(regions, located_indep, total_indep)
+    classification["city_count"] = sum(len(bucket["city_groups"]) for bucket in by_province.values())
     timeline = [
         {
             "month": month,
@@ -315,6 +373,9 @@ def geo_aggregation(ledger: dict) -> dict:
         "coverage": round(located_indep / total_indep, 3) if total_indep else 0.0,
         "polarity": [],
         "timeline": timeline,
+        # 画报三性：overall ∈ regional | national | online，数字口径一并回传
+        "classification": classification,
+        "online_items": online_items,
     }
 
 

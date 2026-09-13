@@ -56,8 +56,50 @@ def test_geo_items_cap_and_total():
 def test_geo_aggregation_empty_ledger():
     from app.report_tables import geo_aggregation
 
-    assert geo_aggregation({}) == {"regions": [], "coverage": 0.0, "polarity": [], "timeline": []}
+    empty = geo_aggregation({})
+    assert empty["regions"] == [] and empty["online_items"] == []
+    assert empty["classification"]["overall"] == "online"
     assert geo_aggregation(None)["regions"] == []
+
+
+def test_classify_spread_three_ways():
+    from app.report_tables import classify_spread
+
+    def regions(n):
+        return [{"region_code": str(440000 + i), "region_name": f"省{i}"} for i in range(n)]
+
+    # 全部来源无地域 → 纯网络传播
+    assert classify_spread([], 0, 7)["overall"] == "online"
+    # 有地域的独立源占比过低（<0.6）→ 主体在网络平台传播
+    assert classify_spread(regions(1), 2, 9)["overall"] == "online"
+    # 集中在 2 省 → 地区性
+    regional = classify_spread(regions(2), 6, 8)
+    assert regional["overall"] == "regional"
+    assert regional["online_total"] == 2 and regional["province_count"] == 2
+    # 覆盖 5 省 → 全国性
+    assert classify_spread(regions(5), 10, 10)["overall"] == "national"
+
+
+def test_geo_spread_annotation_and_online_items():
+    from app.report_tables import geo_aggregation
+
+    ledger = {
+        "sources": [
+            # 有地域：广东独立源（地方来源）
+            {"id": "s1", "title": "惠州市奖补措施印发", "independence_group": "gov.cn"},
+            # 无地域：平台型来源（网络来源）
+            {"id": "s2", "title": "微博热搜词条讨论", "independence_group": "weibo"},
+        ],
+    }
+    out = geo_aggregation(ledger)
+    assert out["classification"]["overall"] == "regional"
+    assert out["classification"]["online_total"] == 1
+    assert out["classification"]["located_total"] == 1
+    gd = out["regions"][0]
+    assert gd["items"][0]["spread"] == "regional" and gd["items"][0]["province"] == "广东省"
+    assert len(out["online_items"]) == 1
+    assert out["online_items"][0]["spread"] == "online"
+    assert out["online_items"][0]["title"] == "微博热搜词条讨论"
 
 
 def test_geo_timeline_buckets_by_month_and_city_groups_counted():
