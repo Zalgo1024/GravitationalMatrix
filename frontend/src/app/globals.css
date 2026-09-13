@@ -650,9 +650,10 @@ html[data-theme="dark"] .editor-source textarea { background: oklch(.185 .014 25
 .report-reader .report-outline,
 .report-delivery-panel { position: sticky; top: 18px; align-self: start; }
 
-/* Keep the sticky outline bottom roughly level with the version-record card
-   instead of the very end of the page, and trim excess blank space below. */
-.report-reader .report-outline { bottom: 120px; }
+/* Keep the sticky outline inside the viewport: the card ends with its content
+   (like the report view) and long outlines scroll internally instead of
+   extending past the panel and overlapping what sits below. */
+.report-reader .report-outline { max-height: calc(100vh - 36px); overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
 .report-delivery-panel { padding-bottom: 20px; }
 .report-document .inline-network { margin-top: 34px; }
 .report-version-loading { min-height: 260px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); color: var(--ink-muted); padding: 36px 0; font-size: 13px; }
@@ -1018,7 +1019,7 @@ html[data-theme="dark"] .editor-source textarea { background: oklch(.185 .014 25
 /* The 250px app sidebar makes a 1280px viewport behave like a compact report canvas. */
 @media (max-width: 1400px) and (min-width: 661px) {
   .report-reader__layout { grid-template-columns: 150px minmax(0, 1fr); }
-  .report-reader .report-outline { position: sticky; top: 18px; bottom: 120px; }
+  .report-reader .report-outline { position: sticky; top: 18px; max-height: calc(100vh - 36px); overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
   .report-delivery-panel { position: static; padding-bottom: 20px; }
   .report-delivery-panel { display: grid; grid-column: 1 / -1; grid-template-columns: 1.2fr .8fr 1fr; gap: 22px; border-top: 1px solid var(--line); border-left: 0; padding: 20px 0 20px; }
   .report-delivery-panel > section { margin: 0; }
