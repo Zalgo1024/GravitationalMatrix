@@ -1744,6 +1744,9 @@ html[data-theme="dark"] .editor-source textarea { background: oklch(.185 .014 25
 .report-document--research { max-width: none; }
 .report-document--research .research-anchor { border-bottom: 1px solid var(--line); padding-bottom: 36px; margin-bottom: 36px; }
 .report-document--research .research-anchor:last-child { border-bottom: 0; }
+/* 空锚点（账本缺失时主体视角/时间线/对照返回 null）不参与排版，
+   否则会留下「分隔线 + 大段空白」的空壳，看起来像页面断裂。 */
+.report-document--research .research-anchor:not(:has(> section)) { border-bottom: 0; padding-bottom: 0; margin-bottom: 0; }
 
 /* —— 报告本体内阅读密度工具条（替代原 toolbar 的位置） —— */
 .report-reading-modes { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); padding: 4px 10px; margin-bottom: 16px; }
