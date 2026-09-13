@@ -14,49 +14,9 @@ import { CanvasRenderer } from "echarts/renderers";
 import { ChevronLeft, ExternalLink, LoaderCircle, MapPin, Pause, Play, X } from "lucide-react";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "@/lib/api";
+import { ensureChinaMap, ensureCityMap, type GeoPayload, type GeoRegion } from "@/lib/geo-map-assets";
 
 echarts.use([MapChart, TooltipComponent, VisualMapComponent, CanvasRenderer]);
-
-interface GeoItem {
-  id: string;
-  title: string;
-  url: string;
-  published_at: string;
-  source_type: string;
-  city: string;
-}
-interface GeoCityGroup {
-  name: string;
-  groups: number;
-}
-interface GeoRegion {
-  region_code: string;
-  region_name: string;
-  independent_sources: number;
-  sources: number;
-  share: number;
-  cities: string[];
-  city_groups?: GeoCityGroup[];
-  items?: GeoItem[];
-  item_total?: number;
-}
-interface GeoTimelineRegion {
-  region_code: string;
-  region_name: string;
-  independent_sources: number;
-}
-interface GeoTimelineFrame {
-  month: string;
-  regions: GeoTimelineRegion[];
-}
-interface GeoPayload {
-  regions: GeoRegion[];
-  coverage: number;
-  polarity: { length: number }[] | unknown[];
-  timeline?: GeoTimelineFrame[];
-  research_status: string;
-  version_no?: number;
-}
 
 type Metric = "independent_sources" | "sources" | "share";
 
@@ -76,29 +36,6 @@ const METRICS: { id: Metric; label: string }[] = [
   { id: "sources", label: "来源数" },
   { id: "share", label: "份额" },
 ];
-
-let mapRegistered: Promise<void> | null = null;
-function ensureChinaMap(): Promise<void> {
-  if (!mapRegistered) {
-    mapRegistered = fetch("/geo/china.json")
-      .then((resp) => resp.json())
-      .then((json) => {
-        echarts.registerMap("china", json as Parameters<typeof echarts.registerMap>[1]);
-      });
-  }
-  return mapRegistered;
-}
-
-// 市级底图按需拉取并按省缓存；失败抛错由调用方降级回省级视图
-const cityMapCache = new Set<string>();
-async function ensureCityMap(code: string): Promise<void> {
-  if (cityMapCache.has(code)) return;
-  const resp = await fetch(`https://geo.datav.aliyun.com/areas_v3/bound/${code}_full.json`);
-  if (!resp.ok) throw new Error(`市级底图加载失败（HTTP ${resp.status}）`);
-  const json = await resp.json();
-  echarts.registerMap(`geo-city-${code}`, json as Parameters<typeof echarts.registerMap>[1]);
-  cityMapCache.add(code);
-}
 
 export function ReportGeoMap({ taskId, versionId }: { taskId: string; versionId?: string | null }) {
   const [payload, setPayload] = useState<GeoPayload | null>(null);
