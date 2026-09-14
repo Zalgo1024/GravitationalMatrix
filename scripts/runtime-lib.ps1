@@ -51,7 +51,11 @@ function Test-ServiceCommand {
         $nodeExecutable = '(?:"[^"]*node(?:\.exe)?"|[^\s"]*node(?:\.exe)?)'
         $projectArgument = '(?:\s+["'']?' + $frontendDir + '["'']?)?'
         $optionsOrEnd = '(?=\s+-|\s*$)'
-        $nextPattern = '^\s*' + $nodeExecutable + '\s+["'']?' + $nextEntry + '["'']?\s+start' + $projectArgument + $optionsOrEnd
+        # 兼容相对路径入口（旧版脚本与手动调试常用），正反斜杠都认。
+        # node + next start + 本项目固定端口 3000 的组合足以确认归属，
+        # 避免「判成外来程序不敢杀 → 下次 start 报端口冲突」的死锁。
+        $nextEntryRelative = 'node_modules[\\/]+next[\\/]+dist[\\/]+bin[\\/]+next'
+        $nextPattern = '^\s*' + $nodeExecutable + '\s+["'']?(?:' + $nextEntry + '|' + $nextEntryRelative + ')["'']?\s+start' + $projectArgument + $optionsOrEnd
         return [regex]::IsMatch($CommandLine, $nextPattern, 'IgnoreCase')
     }
 
