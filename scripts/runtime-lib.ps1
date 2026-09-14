@@ -60,7 +60,11 @@ function Test-ServiceCommand {
     $backendDir = [regex]::Escape((Join-Path $WorkspaceRoot "backend"))
     $appDirPattern = '(?:^|\s)--app-dir(?:\s+|=)["'']?' + $backendDir + '["'']?(?=\s|$)'
     $hasExactAppDir = [regex]::IsMatch($CommandLine, $appDirPattern, 'IgnoreCase')
-    return $isUvicorn -and $isApplication -and $hasExactAppDir
+    # 兼容历史形态：--app-dir . （相对路径，旧版脚本与手动调试常用）。
+    # uvicorn + app.main:app + 8000 固定端口的组合已足以确认归属，避免
+    # 「判成外来程序不敢杀 → 下次 start 报端口冲突」的死锁。
+    $hasRelativeAppDir = [regex]::IsMatch($CommandLine, '(?:^|\s)--app-dir(?:\s+|=)["'']?\.["'']?(?=\s|$)', 'IgnoreCase')
+    return $isUvicorn -and $isApplication -and ($hasExactAppDir -or $hasRelativeAppDir)
 }
 
 function Test-FrontendBuildFresh {
