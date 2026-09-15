@@ -286,7 +286,7 @@ def seed_projects() -> None:
             "interests": "12",
             "chapters": "8",
             "progress": "68%",
-            "owner_name": "引力力矩",
+            "owner_name": "引力矩阵",
             "owner_id": "workbench",
         },
         {
@@ -298,7 +298,7 @@ def seed_projects() -> None:
             "interests": "15",
             "chapters": "8",
             "progress": "100%",
-            "owner_name": "引力力矩",
+            "owner_name": "引力矩阵",
             "owner_id": "workbench",
         },
         {
@@ -310,7 +310,7 @@ def seed_projects() -> None:
             "interests": "20",
             "chapters": "8",
             "progress": "45%",
-            "owner_name": "引力力矩",
+            "owner_name": "引力矩阵",
             "owner_id": "workbench",
         },
     ]

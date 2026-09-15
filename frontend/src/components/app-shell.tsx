@@ -53,7 +53,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <aside className="app-sidebar">
         <Link className="app-brand" href="/" aria-label="返回产品首页" title="返回产品首页">
           <span>三</span>
-          <div><strong>引力力矩</strong><small>GravityMoment</small></div>
+          <div><strong>引力矩阵</strong><small>Gravitational Matrix</small></div>
         </Link>
         <nav className="app-navigation" aria-label="主导航">
           {navigation.map(({ href, label, icon: Icon }) => (
@@ -117,7 +117,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <NavigationBackButton />
             <span className="app-topbar__divider" aria-hidden="true" />
             <Workflow size={17} />
-            <span className="app-topbar__label">引力力矩 · 分析空间</span>
+            <span className="app-topbar__label">引力矩阵 · 分析空间</span>
           </div>
           <div className="app-topbar__right">
             <span className="app-topbar__mode">{connection === "demo" ? "演示数据" : connection === "checking" ? "正在连接后端" : "本地工作空间"}</span>

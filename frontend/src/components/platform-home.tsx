@@ -15,16 +15,16 @@ export function PlatformHome() {
         <div className="home-hero__image" aria-hidden="true" />
 
         <header className="home-nav home-nav--gateway">
-          <Link className="home-brand" href="/" aria-label="引力力矩首页">
+          <Link className="home-brand" href="/" aria-label="引力矩阵首页">
             <span>三</span>
-            <strong>引力力矩</strong>
+            <strong>引力矩阵</strong>
             <small>结构分析平台</small>
           </Link>
           <Link className="home-nav__entry" href="/dashboard">进入工作台 <ArrowRight size={15} /></Link>
         </header>
 
         <div className="home-hero__content home-hero__content--gateway">
-          <p className="home-kicker"><Layers3 size={15} /> 引力力矩驱动</p>
+          <p className="home-kicker"><Layers3 size={15} /> 把混沌，拆成可检验的结构</p>
           <h1 id="home-title">让复杂局势<br />变得可追溯</h1>
           <p className="home-hero__summary">把材料、主体、利益与推断组织成一条可复核的判断链，而不是一段无法追溯的结论。</p>
           <Link className="home-primary-action" href="/analysis">开始分析 <Plus size={16} /></Link>

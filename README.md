@@ -1,4 +1,4 @@
-# 引力力矩 · GravityMoment
+# 引力矩阵 · Gravitational Matrix
 
 > **把混沌的事件，拆成可检验的结构。**
 >

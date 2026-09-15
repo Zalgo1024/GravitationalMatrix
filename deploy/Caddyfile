@@ -1,4 +1,4 @@
-# 引力力矩 · 容器入口反代（Caddy）
+# 引力矩阵 · 容器入口反代（Caddy）
 # 浏览器只访问一个源（${PORT}）：/api /ws 转发后端 uvicorn，其余转发前端 next start。
 # reverse_proxy 自动处理 WebSocket 升级，无需额外配置。
 

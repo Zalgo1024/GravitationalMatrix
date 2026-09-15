@@ -147,7 +147,7 @@ export function AuthCard({ title, hint }: { title?: string; hint?: string } = {}
   return (
     <div className="auth-gate">
       <form className="auth-card" onSubmit={submit}>
-        <h1 className="auth-card__title">{title ?? "引力力矩"}</h1>
+        <h1 className="auth-card__title">{title ?? "引力矩阵引擎"}</h1>
         <div className="auth-card__tabs" role="tablist">
           <button
             type="button"

@@ -1,4 +1,4 @@
-# 引力力矩 · 后端依赖清单
+# 引力矩阵 · 后端依赖清单
 # 安装：pip install -r requirements.txt
 # 注意：backend 通过 sys.path 直接调用「域引擎」（三元结构理论 分析skill脚本程序），
 #       因此同一 Python 环境必须同时具备 backend 与引擎两套依赖。

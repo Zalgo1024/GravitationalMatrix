@@ -1,10 +1,10 @@
 @echo off
 setlocal
-title 引力力矩 - 体检 (core regression check)
+title 引力矩阵 - 体检 (core regression check)
 cd /d "%~dp0"
 
 echo ============================================
-echo   引力力矩 - 体检
+echo   引力矩阵 - 体检
 echo   Run this after changing code to confirm
 echo   core features are not broken.
 echo ============================================

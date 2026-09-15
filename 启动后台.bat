@@ -1,10 +1,10 @@
 @echo off
 setlocal
-title 引力力矩运营后台 - Start (independent)
+title 引力矩阵运营后台 - Start (independent)
 cd /d "%~dp0"
 
 echo ============================================
-echo   引力力矩运营后台  -  independent start
+echo   引力矩阵运营后台  -  independent start
 echo   admin console : http://127.0.0.1:3001/admin-console/overview
 echo   backend API   : http://127.0.0.1:8000  (shared)
 echo   workbench     : http://127.0.0.1:3000  (NOT started here)

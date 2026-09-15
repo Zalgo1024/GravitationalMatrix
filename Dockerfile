@@ -1,4 +1,4 @@
-# ── 引力力矩 · Docker 镜像 ──
+# ── 引力矩阵 · Docker 镜像 ──
 # 单容器：Caddy 反代 + Next.js 前端 + FastAPI 后端（BYOK，PUBLIC_MODE=1）
 # 构建：docker build -t triad-workbench .
 

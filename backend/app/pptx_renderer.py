@@ -412,7 +412,7 @@ def _cover(prs, title: str, meta: list) -> None:
 
     # 眉标
     tf = _textbox(slide, MARGIN, Inches(1.72), Inches(9.4), Inches(0.4))
-    _para(tf, "引力力矩分析报告", 15, ACCENT, True, first=True)
+    _para(tf, "引力矩阵分析报告", 15, ACCENT, True, first=True)
 
     # 标题（按长度降档，避免溢出）
     size = 38 if len(title) <= 22 else (32 if len(title) <= 34 else 26)
@@ -826,7 +826,7 @@ def _analysis(prs, report) -> None:
         else:
             _para(tf, "（本节未提供）", 10.5, FAINT, first=True)
 
-    _footer(slide, "引力力矩", 7)
+    _footer(slide, "引力矩阵", 7)
 
 
 def _conclusion(prs, report) -> None:

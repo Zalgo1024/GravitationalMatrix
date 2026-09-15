@@ -76,7 +76,7 @@ class Settings:
         # 默认项目归属人。默认取工作台品牌名，不在界面暴露作者个人姓名；
         # 需要固定归属人时显式配置 DEFAULT_OWNER_NAME / DEFAULT_OWNER_ID 即可（优先级最高）。
         self.default_owner_name: str = os.environ.get(
-            "DEFAULT_OWNER_NAME", "引力力矩"
+            "DEFAULT_OWNER_NAME", "引力矩阵"
         )
         self.default_owner_id: str = os.environ.get(
             "DEFAULT_OWNER_ID", "workbench"

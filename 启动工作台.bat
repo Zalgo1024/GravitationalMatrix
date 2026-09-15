@@ -1,10 +1,10 @@
 @echo off
 setlocal
-title 引力力矩工作台 - Start
+title 引力矩阵工作台 - Start
 cd /d "%~dp0"
 
 echo ============================================
-echo   引力力矩工作台 - starting...
+echo   引力矩阵工作台 - starting...
 echo   (frontend http://127.0.0.1:3000  +  backend http://127.0.0.1:8000)
 echo ============================================
 echo.

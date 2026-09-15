@@ -1,6 +1,6 @@
 @echo off
 setlocal
-title 引力力矩运营后台 - Stop
+title 引力矩阵运营后台 - Stop
 cd /d "%~dp0"
 
 echo Stopping the admin console (port 3001 only)...

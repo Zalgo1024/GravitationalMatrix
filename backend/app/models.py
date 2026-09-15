@@ -82,7 +82,7 @@ class Project(Base):
     owner_name = Column(String(120), nullable=True)
     is_archived = Column(Integer, default=0)  # 0=活跃 1=已归档（软删除）
     archived_at = Column(DateTime(timezone=True), nullable=True)
-    # 会员系统预留（与 Task.owner_id 对齐，当前默认「引力力矩」）
+    # 会员系统预留（与 Task.owner_id 对齐，当前默认「引力矩阵」）
     owner_id = Column(String(32), ForeignKey("users.id"), nullable=True)
     updated_at = Column(DateTime(timezone=True), default=_now, onupdate=_now)
 

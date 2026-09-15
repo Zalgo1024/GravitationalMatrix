@@ -30,7 +30,7 @@ from app.settings import settings as app_settings
 
 logger = logging.getLogger("app")
 
-app = FastAPI(title="引力力矩 - 后端（内部使用）")
+app = FastAPI(title="引力矩阵引擎 - 后端（内部使用）")
 
 # 仅允许本机前端跨域，不外放。来源由 CORS_ORIGINS 配置（A1），
 # 默认放行工作台 3000 + 独立运营后台 3001，localhost 与 127.0.0.1 均含。

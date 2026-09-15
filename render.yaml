@@ -2,9 +2,9 @@
 # 依赖仓库根目录的 Dockerfile；环境变量见下方 envVars。
 services:
   - type: web
-    name: gravitymoment
+    name: gravitational-matrix
     runtime: docker
-    repo: https://github.com/Zalgo1024/GravityMoment
+    repo: https://github.com/Zalgo1024/GravitationalMatrix
     plan: free
     dockerfilePath: ./Dockerfile
     healthCheckPath: /
@@ -14,7 +14,7 @@ services:
         value: "1"
       # ── 归属人去个人化：默认工作台名，可改 ──
       - key: DEFAULT_OWNER_NAME
-        value: "引力力矩"
+        value: "引力矩阵"
       - key: DEFAULT_OWNER_ID
         value: "workbench"
       # ── 联网搜索：不配 Key 也能走 DuckDuckGo 零 Key 降级 ──
