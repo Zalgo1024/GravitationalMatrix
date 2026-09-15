@@ -1,4 +1,4 @@
-# 三元结构分析工作台 · SanYuan Workbench
+# 引力力矩 · GravityMoment
 
 > **把混沌的事件，拆成可检验的结构。**
 >

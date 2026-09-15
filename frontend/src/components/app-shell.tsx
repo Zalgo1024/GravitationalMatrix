@@ -117,7 +117,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <NavigationBackButton />
             <span className="app-topbar__divider" aria-hidden="true" />
             <Workflow size={17} />
-            <span className="app-topbar__label">三元结构分析空间</span>
+            <span className="app-topbar__label">引力力矩 · 分析空间</span>
           </div>
           <div className="app-topbar__right">
             <span className="app-topbar__mode">{connection === "demo" ? "演示数据" : connection === "checking" ? "正在连接后端" : "本地工作空间"}</span>

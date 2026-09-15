@@ -1,4 +1,4 @@
-# 三元结构理论分析系统 — Python 依赖
+# 引力力矩 — Python 依赖
 # 建议 Python 3.10+
 # 安装：pip install -r requirements.txt
 #

@@ -14,7 +14,7 @@ services:
         value: "1"
       # ── 归属人去个人化：默认工作台名，可改 ──
       - key: DEFAULT_OWNER_NAME
-        value: "三元结构分析工作台"
+        value: "引力力矩"
       - key: DEFAULT_OWNER_ID
         value: "workbench"
       # ── 联网搜索：不配 Key 也能走 DuckDuckGo 零 Key 降级 ──

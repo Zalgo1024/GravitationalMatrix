@@ -17,7 +17,7 @@ logger = logging.getLogger("app")
 
 _CODE_MAIL_HTML = """\
 <div style="max-width:480px;margin:0 auto;font-family:'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;">
-  <h2 style="margin:0 0 6px;font-size:18px;">三元结构分析工作台</h2>
+  <h2 style="margin:0 0 6px;font-size:18px;">引力力矩</h2>
   <p style="margin:0 0 18px;color:#666;font-size:13px;">你正在注册/验证邮箱，验证码如下（15 分钟内有效）：</p>
   <div style="display:inline-block;background:#f5f5f2;border:1px solid #e2e2dd;border-radius:10px;
               padding:14px 28px;font-size:28px;font-weight:800;letter-spacing:8px;color:#111;">{code}</div>
@@ -33,8 +33,8 @@ def send_verification_email(to: str, code: str) -> bool:
         return False
     try:
         msg = MIMEText(_CODE_MAIL_HTML.format(code=code), "html", "utf-8")
-        msg["Subject"] = Header(f"【三元结构分析工作台】邮箱验证码 {code}", "utf-8")
-        msg["From"] = formataddr((str(Header("三元结构分析工作台", "utf-8")), settings.smtp_sender))
+        msg["Subject"] = Header(f"【引力力矩】邮箱验证码 {code}", "utf-8")
+        msg["From"] = formataddr((str(Header("引力力矩", "utf-8")), settings.smtp_sender))
         msg["To"] = formataddr((to, to))
 
         with smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port, timeout=10) as server:
@@ -49,7 +49,7 @@ def send_verification_email(to: str, code: str) -> bool:
 
 _RESET_MAIL_HTML = """\
 <div style="max-width:480px;margin:0 auto;font-family:'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;">
-  <h2 style="margin:0 0 6px;font-size:18px;">三元结构分析工作台</h2>
+  <h2 style="margin:0 0 6px;font-size:18px;">引力力矩</h2>
   <p style="margin:0 0 18px;color:#666;font-size:13px;">你申请了重置密码。点击下面的按钮设置新密码（{ttl} 分钟内有效，仅可使用一次）：</p>
   <p style="margin:0 0 18px;">
     <a href="{url}" style="display:inline-block;background:#111;color:#fff;text-decoration:none;
@@ -69,8 +69,8 @@ def send_password_reset_email(to: str, reset_url: str, ttl_minutes: int = 30) ->
         return False
     try:
         msg = MIMEText(_RESET_MAIL_HTML.format(url=reset_url, ttl=ttl_minutes), "html", "utf-8")
-        msg["Subject"] = Header("【三元结构分析工作台】重置你的登录密码", "utf-8")
-        msg["From"] = formataddr((str(Header("三元结构分析工作台", "utf-8")), settings.smtp_sender))
+        msg["Subject"] = Header("【引力力矩】重置你的登录密码", "utf-8")
+        msg["From"] = formataddr((str(Header("引力力矩", "utf-8")), settings.smtp_sender))
         msg["To"] = formataddr((to, to))
 
         with smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port, timeout=10) as server:
