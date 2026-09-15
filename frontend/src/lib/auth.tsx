@@ -75,13 +75,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => { void refresh(); }, [refresh]);
 
-  // GitHub 按钮可见性：后端配了 Client ID/Secret 才展示（接口未启用时 enabled=false）
+  // GitHub 按钮可见性：后端配了 Client ID/Secret 才展示（接口未启用时 enabled=false）。
+  // 带重试：页面在后端重启期间打开时，接口可能短暂 404/断连，别让按钮永久消失。
   useEffect(() => {
     let cancelled = false;
-    fetch(`${apiBaseUrl()}/api/auth/github/status`)
-      .then((r) => (r.ok ? r.json() : { enabled: false }))
-      .then((d) => { if (!cancelled) setGithubEnabled(Boolean(d?.enabled)); })
-      .catch(() => undefined);
+    const attempt = (n: number) => {
+      if (cancelled) return;
+      fetch(`${apiBaseUrl()}/api/auth/github/status`)
+        .then((r) => (r.ok ? r.json() : { enabled: false }))
+        .then((d) => {
+          if (cancelled) return;
+          if (d?.enabled) setGithubEnabled(true);
+          else if (n > 0) setTimeout(() => attempt(n - 1), 2500);
+        })
+        .catch(() => { if (n > 0) setTimeout(() => attempt(n - 1), 2500); });
+    };
+    attempt(3);
     return () => { cancelled = true; };
   }, []);
 

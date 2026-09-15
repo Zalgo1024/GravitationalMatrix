@@ -1760,6 +1760,7 @@ html[data-theme="dark"] .editor-source textarea { background: oklch(.185 .014 25
 .auth-gate--loading p { color: var(--ink-muted, #777); font-size: 13px; }
 .auth-card { width: min(400px, 100%); border: 1px solid var(--line, #ddd); border-radius: 14px; background: var(--surface, #fff); padding: 30px 28px 22px; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 12px 40px rgba(0,0,0,.06); }
 .auth-card__title { margin: 0 0 2px; font-size: 18px; font-weight: 800; letter-spacing: .02em; }
+.auth-card__subtitle { margin: -8px 0 0; color: var(--ink-muted, #888); font-size: 12px; line-height: 1.6; }
 .auth-card__tabs { display: flex; gap: 4px; padding: 4px; border: 1px solid var(--line, #ddd); border-radius: 9px; background: var(--background, #f6f6f4); }
 .auth-card__tab { flex: 1; min-height: 32px; border: 0; border-radius: 6px; background: transparent; color: var(--ink-muted, #777); font-size: 13px; font-weight: 700; cursor: pointer; }
 .auth-card__tab--active { background: var(--accent, #1a1a1a); color: #fff; }
@@ -1780,7 +1781,8 @@ html[data-theme="dark"] .editor-source textarea { background: oklch(.185 .014 25
 .auth-card__divider { display: flex; align-items: center; gap: 12px; color: var(--ink-muted, #999); font-size: 11px; font-weight: 700; margin: 2px 0; }
 .auth-card__divider::before, .auth-card__divider::after { content: ""; flex: 1; height: 1px; background: var(--line, #e2e2dd); }
 .auth-card__github { min-height: 42px; display: flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid var(--line, #ddd); border-radius: 8px; background: var(--surface, #fff); color: var(--ink, #111); font-size: 14px; font-weight: 700; cursor: pointer; }
-.auth-card__github:hover { border-color: var(--accent, #1a1a1a); }
+.auth-card__github:hover { border-color: var(--accent, #1a1a1a); background: var(--background, #f6f6f4); }
+.auth-card__github:active { transform: translateY(1px); }
 .auth-card__github svg { flex: 0 0 auto; }
 
 /* —— 用户管理页（/admin）—— */
