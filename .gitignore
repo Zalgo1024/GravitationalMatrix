@@ -39,6 +39,9 @@ backend/runtime/
 backend/generated/
 backend/data/
 
+# ----- 后端测试/调试临时区（pytest 以 cwd 为 tempdir，产物可再生，不入库） -----
+backend/.runtime/
+
 # ----- 内部计划 / 临时文档（仅本地留档，不公开） -----
 DEPLOY_PLAN.md
 GO_TO_MARKET_PLAN.md

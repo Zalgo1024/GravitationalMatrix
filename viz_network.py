@@ -88,9 +88,190 @@ def generate_diagram(data: dict, output_path: str) -> Optional[str]:
         return _generate_html(data, output_path)
     else:
         viz = data.get("viz", "network")
+        if viz == "geo":
+            return _generate_geo_png(data, output_path)
         if viz in ("org", "flow"):
             return _generate_layered_png(data, output_path, viz)
         return _generate_png(data, output_path)
+
+
+# ── F11 地域分布静态地图（GeoJSON + matplotlib 直接填色，不引 geopandas） ──
+
+# 无数据省份的灰显色；有数据省份按值在浅蓝→深蓝之间取色
+_GEO_NO_DATA = "#EFF1F4"
+_GEO_COLOR_LOW = (232, 240, 251)
+_GEO_COLOR_HIGH = (46, 95, 163)
+
+
+def _locate_geojson() -> Optional[str]:
+    """定位省级 GeoJSON：环境变量优先，其次前端 public 下那份（同仓共用一份底图）。"""
+    here = os.path.dirname(os.path.abspath(__file__))
+    candidates = [
+        os.environ.get("SY_GEO_GEOJSON") or "",
+        os.path.join(here, "data", "china.geo.json"),
+        os.path.join(here, "frontend", "public", "geo", "china.json"),
+    ]
+    for path in candidates:
+        if path and os.path.isfile(path):
+            return path
+    return None
+
+
+def _geo_polygons(geometry: dict) -> list[list[tuple[float, float]]]:
+    """把 Polygon / MultiPolygon 摊平成一批外环坐标串（内环忽略，填色足够）。"""
+    if not isinstance(geometry, dict):
+        return []
+    kind = geometry.get("type")
+    coords = geometry.get("coordinates") or []
+    rings: list[list[tuple[float, float]]] = []
+    if kind == "Polygon":
+        for ring in coords[:1]:
+            rings.append([(float(p[0]), float(p[1])) for p in ring if len(p) >= 2])
+    elif kind == "MultiPolygon":
+        for polygon in coords:
+            for ring in polygon[:1]:
+                rings.append([(float(p[0]), float(p[1])) for p in ring if len(p) >= 2])
+    return [ring for ring in rings if len(ring) > 2]
+
+
+def _generate_geo_png(data: dict, output_path: str) -> Optional[str]:
+    """渲染省级着色地图 PNG（Word 内嵌用）。
+
+    data: {"viz": "geo", "title": ..., "regions": [{region_name, independent_sources, share}...], "coverage": 0~1}
+    底图缺失或无地域数据时返回 None，由调用方决定是否插入——不静默造图。
+    """
+    geojson_path = _locate_geojson()
+    if not geojson_path:
+        return None
+    regions = [r for r in (data.get("regions") or []) if isinstance(r, dict) and r.get("region_name")]
+    if not regions:
+        return None
+
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.colors  # noqa: F401  绑定 colors 子模块：color_for / 色阶图例都要用
+        import matplotlib.pyplot as plt
+        from matplotlib.patches import Polygon as MplPolygon
+    except Exception:
+        return None
+
+    try:
+        with open(geojson_path, "r", encoding="utf-8") as handle:
+            geo = json.load(handle)
+    except Exception:
+        return None
+    features = geo.get("features") if isinstance(geo, dict) else None
+    if not features:
+        return None
+
+    value_by_name = {str(r["region_name"]): float(r.get("independent_sources") or 0) for r in regions}
+    max_value = max(value_by_name.values()) if value_by_name else 0.0
+    _setup_chinese_font(plt)
+
+    def color_for(name: str) -> tuple[float, float, float]:
+        value = value_by_name.get(name)
+        if not value or max_value <= 0:
+            return matplotlib.colors.to_rgb(_GEO_NO_DATA)
+        ratio = min(1.0, value / max_value)
+        return tuple(
+            (_GEO_COLOR_LOW[i] + (_GEO_COLOR_HIGH[i] - _GEO_COLOR_LOW[i]) * ratio) / 255.0
+            for i in range(3)
+        )
+
+    fig, ax = plt.subplots(figsize=(10.4, 6.4), dpi=150)
+    ax.set_axis_off()
+    ax.set_aspect("equal")
+    ax.set_position([0.01, 0.09, 0.74, 0.84])
+    for feature in features:
+        props = feature.get("properties") or {}
+        name = str(props.get("name") or "")
+        # 无名字的要素是南海诸岛与九段线：主图不画，交给右侧小窗完整呈现
+        if not name:
+            continue
+        rings = _geo_polygons(feature.get("geometry") or {})
+        for ring in rings:
+            ax.add_patch(MplPolygon(ring, closed=True, facecolor=color_for(name), edgecolor="#FFFFFF", linewidth=0.5, zorder=2))
+        # 只标注有数据的省，避免全国 34 个名字糊成一片
+        if name in value_by_name and rings:
+            biggest = max(rings, key=len)
+            xs = [p[0] for p in biggest]
+            ys = [p[1] for p in biggest]
+            ax.text(
+                sum(xs) / len(xs), sum(ys) / len(ys), name.replace("省", "").replace("市", "").replace("自治区", "").replace("特别行政区", ""),
+                fontsize=6.5, ha="center", va="center", color="#123A63", zorder=4,
+            )
+
+    ax.set_xlim(73, 136)
+    ax.set_ylim(17, 54)
+
+    # 南海诸岛小窗：同一份底图，视口压到南海范围（九段线按界线画，必须看得见）
+    # 独立小窗（不做成主图内嵌，避免与台湾/海南叠在一起看不清）
+    sea = fig.add_axes([0.765, 0.20, 0.215, 0.52])
+    sea.set_aspect("equal")
+    sea.patch.set_facecolor("#F7FAFD")  # 浅海域底色，与主图大陆区分
+    sea.patch.set_alpha(1.0)
+    for feature in features:
+        props = feature.get("properties") or {}
+        name = str(props.get("name") or "")
+        boundary = not name
+        for ring in _geo_polygons(feature.get("geometry") or {}):
+            sea.add_patch(MplPolygon(
+                ring, closed=True,
+                facecolor="none" if boundary else color_for(name),
+                # 九段线在小窗里是主角，用深蓝粗线，缩印后仍看得见
+                edgecolor="#2E5FA3" if boundary else "#FFFFFF",
+                linewidth=1.1 if boundary else 0.3,
+                zorder=4 if boundary else 2,
+            ))
+    sea.set_xlim(105, 123)
+    sea.set_ylim(2, 24)
+    for spine in sea.spines.values():
+        spine.set_color("#9FB2C6")
+        spine.set_linewidth(0.8)
+    sea.set_xticks([])
+    sea.set_yticks([])
+    sea.set_title("南海诸岛", fontsize=8, color="#3E4E62", pad=4)
+
+    # 色阶图例：0 → 最大值
+    gradient = fig.add_axes([0.12, 0.07, 0.34, 0.022])
+    gradient.imshow(
+        [[i / 100 for i in range(101)]],
+        aspect="auto",
+        cmap=matplotlib.colors.LinearSegmentedColormap.from_list(
+            "geo", [tuple(c / 255 for c in _GEO_COLOR_LOW), tuple(c / 255 for c in _GEO_COLOR_HIGH)]
+        ),
+    )
+    gradient.set_xticks([])
+    gradient.set_yticks([])
+    for spine in gradient.spines.values():
+        spine.set_color("#C9D2DC")
+        spine.set_linewidth(0.6)
+    fig.text(0.115, 0.045, "少", fontsize=7, color="#5A6B80")
+    fig.text(0.455, 0.045, f"多（最高 {int(max_value)} 个独立源）", fontsize=7, color="#5A6B80")
+    fig.text(0.12, 0.098, "灰显 = 本次没有识别到该地区来源", fontsize=7, color="#5A6B80")
+
+    coverage = data.get("coverage")
+    title = str(data.get("title") or "来源地域分布")
+    subtitle = ""
+    if isinstance(coverage, (int, float)) and coverage < 0.5:
+        subtitle = f"注：仅 {round(float(coverage) * 100)}% 的独立来源可定位到地区，下图只反映可定位部分"
+    ax.set_title(title, fontsize=_TITLE_SIZE, fontweight="bold", color=_TITLE_COLOR, pad=14)
+    if subtitle:
+        fig.text(0.5, 0.925, subtitle, fontsize=8, ha="center", color="#8A6D1F")
+    fig.text(
+        0.5, 0.015,
+        "示意图：底图为开源行政区划数据，非审图号标准地图，正式出版请使用自然资源部标准地图",
+        fontsize=6.5, ha="center", color="#8A94A0",
+    )
+
+    try:
+        fig.savefig(output_path, dpi=150, bbox_inches="tight", facecolor="white")
+    except Exception:
+        return None
+    finally:
+        plt.close(fig)
+    return output_path
 
 
 # ── 静态 PNG（matplotlib + networkx） ──────────────────────

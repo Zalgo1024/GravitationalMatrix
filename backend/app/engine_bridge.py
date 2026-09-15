@@ -35,17 +35,20 @@ def export_report(
     output_dir: str | None = None,
     slug: str | None = None,
     data_tables: list | None = None,
+    geo_map: dict | None = None,
 ) -> dict:
     """把生成好的 Markdown 交给域引擎渲染为 Word(+PDF)。
 
     slug（如 task_id）提供时，引擎在 output_dir 下建独立子目录，避免并发同名任务互相覆盖。
     data_tables：可选 Word 附表 [{name, columns, rows}]（F15 关键数据表），None 时输出不变。
+    geo_map：可选地域聚合 {regions, coverage}（F11 地域分布），None 时输出不变。
     返回：{"word", "pdf", "folder", "title", "diagrams"}
     """
     engine = get_engine()
     eng = engine.CaseAnalysisEngine()
     return eng.export_from_text(
-        title, markdown, output_dir=output_dir, slug=slug, data_tables=data_tables
+        title, markdown, output_dir=output_dir, slug=slug,
+        data_tables=data_tables, geo_map=geo_map,
     )
 
 

@@ -16,7 +16,7 @@ import urllib.parse
 
 from app.prompt_builder import build_system_prompt
 from app.engine_bridge import export_report
-from app.report_tables import word_data_tables
+from app.report_tables import geo_aggregation, word_data_tables
 from app import rule_engine
 from app.report_quality import (
     ReportQualityError,
@@ -799,11 +799,13 @@ class ReportGenerator:
         output_dir: str | None = None,
         slug: str | None = None,
         data_tables: list[dict] | None = None,
+        geo_map: dict | None = None,
     ) -> dict:
         """导出 Word/PDF（调用域引擎），并归一 PDF 可用状态。
 
         对应进度链第 6 步「输出分析结果」里程碑。
         data_tables：可选 Word 附表 [{name, columns, rows}]（F15 关键数据表），None 时输出不变。
+        geo_map：可选地域聚合 {regions, coverage}（F11 地域分布），None 时输出不变。
         返回域引擎导出结果（含 ``pdf_available`` / ``pdf_reason`` 修正），不含原始 Markdown。
         """
         exp = export_report(
@@ -812,6 +814,7 @@ class ReportGenerator:
             output_dir=output_dir,
             slug=slug,
             data_tables=data_tables,
+            geo_map=geo_map,
         )
         # 归一 PDF：域引擎在转换失败时也会返回「幽灵路径」（文件并不存在）。
         # 此处以真实文件存在性为准：存在才保留 pdf 路径并标 pdf_available=true；
@@ -899,7 +902,14 @@ class ReportGenerator:
             try:
                 # F15：把研究账本派生的关键数据表（来源/主体/时间线或条款）作为 Word 附表
                 data_tables = word_data_tables(research.model_dump(), self.analysis_type)
-                exp = self.export(md, title, output_dir, slug, data_tables=data_tables)
+                # F11：地域分布（表 + 静态地图）；无地域数据时 geo_aggregation 返回空 regions，
+                # docx_renderer 会整段跳过，输出与既有逐字一致。
+                # 附录可选，派生失败绝不能拖垮整份交付 → 降级为 None（同「不写一字」）
+                try:
+                    geo_map = geo_aggregation(research.model_dump())
+                except Exception:  # noqa: BLE001
+                    geo_map = None
+                exp = self.export(md, title, output_dir, slug, data_tables=data_tables, geo_map=geo_map)
                 break
             except Exception:  # noqa: BLE001
                 if attempt == 0:

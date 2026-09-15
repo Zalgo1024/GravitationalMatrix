@@ -148,6 +148,7 @@ def render_docx(
     diagram_collector: Optional[list] = None,
     tone: str = "neutral",
     data_tables: Optional[list] = None,
+    geo_map: Optional[dict] = None,
 ) -> str:
     if config is None:
         from config import load_config
@@ -204,8 +205,12 @@ def render_docx(
                         diagram_counter=_diagram_counter)
 
     # F15：Word 附表「关键数据表」（可选；None/空列表时输出与既有逐字一致）
+    appendix_seq = 0
     if data_tables:
-        _render_appendix_data_tables(doc, data_tables, config)
+        appendix_seq = _render_appendix_data_tables(doc, data_tables, config)
+    # F11：地域分布（表 + 静态地图 PNG）；无地域数据时不写一字
+    if geo_map:
+        _render_geo_appendix(doc, geo_map, config, output_folder, seq=appendix_seq + 1)
 
     doc.save(output_path)
 
@@ -802,11 +807,12 @@ def _render_multi_row_table(doc: Document, block: Block, config: Config) -> None
 
 # ── Word 附表「关键数据表」（F15） ─────────────────────────
 
-def _render_appendix_data_tables(doc: Document, tables: list, config: Config) -> None:
+def _render_appendix_data_tables(doc: Document, tables: list, config: Config) -> int:
     """在文末渲染附表（来源证据表/主体清单表/事件时间线表或政策条款表）。
 
     tables: [{name, columns, rows}]，由 backend report_tables.word_data_tables 派生；
     rows 首行不重复表头（columns 即表头）。空表跳过。
+    返回实际渲染的附表数量——后续附表（如 F11 地域分布）据此续编号，跳过空表也不会断号。
     """
     seq = 0
     for table in tables:
@@ -818,6 +824,74 @@ def _render_appendix_data_tables(doc: Document, tables: list, config: Config) ->
         name = table.get("name") or f"数据表{seq}"
         doc.add_heading(f"附表 {seq}：{name}", level=1)
         _render_rows_table(doc, [columns] + rows, config)
+    return seq
+
+
+# ── Word 附录「地域分布」（F11） ───────────────────────────
+
+def _render_geo_appendix(doc: Document, geo: dict, config: Config, output_folder: Optional[str] = None,
+                         seq: Optional[int] = None) -> bool:
+    """在附表后渲染「地域分布」：先表后图（图由 viz_network 的 geo 分支出 PNG）。
+
+    geo: backend geo_aggregation 的输出 {regions, coverage}；无地域数据或底图
+    缺失时返回 False，一个字都不写——不静默造图，也不给读者一张空地图。
+    seq: 与「附表 N」编号体系接续的序号；为 None 时退化为不带编号的标题。
+    """
+    regions = [r for r in (geo.get("regions") or []) if isinstance(r, dict) and r.get("region_name")]
+    if not regions:
+        return False
+
+    heading = f"附表 {seq}：来源地域分布" if seq else "来源地域分布"
+    doc.add_heading(heading, level=1)
+    rows = [["省份", "独立源数", "来源条数", "份额", "涉及地市"]]
+    for region in regions:
+        cities = region.get("cities") or []
+        rows.append([
+            str(region.get("region_name") or ""),
+            str(region.get("independent_sources") or 0),
+            str(region.get("sources") or 0),
+            f"{round(float(region.get('share') or 0) * 100)}%",
+            "、".join(str(c) for c in cities[:6]) + (" 等" if len(cities) > 6 else ""),
+        ])
+    _render_rows_table(doc, rows, config)
+
+    coverage = geo.get("coverage")
+    note = doc.add_paragraph()
+    if isinstance(coverage, (int, float)) and coverage < 0.5:
+        _add_run(note, f"说明：本次仅 {round(float(coverage) * 100)}% 的独立来源可定位到地区，下表与下图只反映可定位部分。", "body", config, size_pt=10, color=_COVER_MUTED_COLOR)
+    else:
+        _add_run(note, "说明：独立源数按转载去重后的独立来源统计，份额＝该省独立源数÷可定位独立源总数。", "body", config, size_pt=10, color=_COVER_MUTED_COLOR)
+
+    tmp_path: Optional[str] = None
+    try:
+        from viz_network import generate_diagram
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+            tmp_path = tmp.name
+        result = generate_diagram({"viz": "geo", "title": "来源地域分布", **geo}, tmp_path)
+        if not result or not os.path.exists(tmp_path):
+            return True  # 表已写入，图缺失不算失败
+        doc.add_paragraph()
+        doc.add_picture(tmp_path, width=Cm(15.0))
+        doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
+        caption = doc.add_paragraph()
+        caption.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        _add_run(caption, "图：来源地域分布（示意图，底图为开源行政区划数据，非审图号标准地图）", "body", config, size_pt=10, color=_COVER_MUTED_COLOR)
+        if output_folder:
+            import shutil
+            try:
+                shutil.copyfile(tmp_path, os.path.join(output_folder, "地域分布.png"))
+            except Exception:
+                pass
+    except Exception:
+        return True
+    finally:
+        try:
+            if tmp_path and os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+        except Exception:
+            pass
+    return True
 
 
 # ── 图表（DIAGRAM JSON） ──────────────────────────────────

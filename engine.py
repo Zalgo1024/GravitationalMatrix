@@ -132,6 +132,7 @@ class CaseAnalysisEngine:
         overwrite: bool = False,
         tone: str = "neutral",
         data_tables: Optional[list] = None,
+        geo_map: Optional[dict] = None,
     ) -> dict[str, str]:
         """从分析正文导出 Word + PDF 报告。
 
@@ -145,6 +146,8 @@ class CaseAnalysisEngine:
                 仅作为元数据与封面标注，不改变报告结构；具体行文由撰写者落实。
             data_tables: 可选 Word 附表 [{name, columns, rows}]（F15 关键数据表）。
                 None/空列表时不渲染，输出与既有逐字一致。
+            geo_map: 可选地域聚合 {regions, coverage}（F11 地域分布）。None 或
+                无 regions 时不渲染，输出与既有逐字一致。
 
         Returns:
             {
@@ -175,7 +178,7 @@ class CaseAnalysisEngine:
         os.makedirs(folder, exist_ok=True)
 
         # 3. 生成 Word
-        word_path = self._render_docx(report, folder, tone=tone, data_tables=data_tables)
+        word_path = self._render_docx(report, folder, tone=tone, data_tables=data_tables, geo_map=geo_map)
 
         # 4. 转换 PDF
         pdf_path = self._convert_to_pdf(word_path, folder)
@@ -227,7 +230,8 @@ class CaseAnalysisEngine:
     # ── 内部方法 ──────────────────────────────────────────────
 
     def _render_docx(self, report: ParsedReport, folder: str, tone: str = "neutral",
-                     data_tables: Optional[list] = None) -> str:
+                     data_tables: Optional[list] = None,
+                     geo_map: Optional[dict] = None) -> str:
         """渲染 Word 文档，保存网络图到输出目录。"""
         from docx_renderer import render_docx
 
@@ -240,6 +244,7 @@ class CaseAnalysisEngine:
             diagram_collector=self._diagrams,
             tone=tone,
             data_tables=data_tables,
+            geo_map=geo_map,
         )
         return output_path
 
