@@ -23,7 +23,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app import queue as taskq
 from app.db import init_db, seed_admin_user, seed_projects
-from app.routers import admin_ops, analyze, auth, benchmarks, cases, collect, materials, monitoring, projects, regions, reports, search, settings, system, tasks
+from app.routers import admin_ops, analyze, auth, benchmarks, cases, collect, github_oauth, materials, monitoring, projects, regions, reports, search, settings, system, tasks
 # 注意：上面 routers 里的 `settings` 是路由模块，此处配置实例必须另起别名，
 # 否则会覆盖 `settings.router` 导致装配失败。
 from app.settings import settings as app_settings
@@ -107,6 +107,7 @@ if ADMIN_API_ENABLED:
     app.include_router(admin_ops.admin_router)
 else:
     logger.info("[main] 管理端路由已关闭：本进程不注册任何 /api/admin/* 端点")
+app.include_router(github_oauth.router)  # GitHub OAuth：未配置时接口自返回 404，前端按钮隐藏
 
 app.include_router(analyze.router)
 app.include_router(projects.router)

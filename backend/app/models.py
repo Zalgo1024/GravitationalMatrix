@@ -59,6 +59,10 @@ class User(Base):
     # 签发时间(iat)早于该时刻的 JWT 一律失效 —— 即「改密后其他设备立即下线」。
     token_valid_after = Column(DateTime(timezone=True), nullable=True)
 
+    # GitHub OAuth（Phase 3）：GitHub 用户唯一数字 id（字符串存储）；NULL = 纯邮箱密码账号。
+    # 同邮箱首次 GitHub 登录时自动关联（GitHub 侧邮箱已验证 → email_verified 置 1）。
+    github_id = Column(String(32), unique=True, nullable=True)
+
     tasks = relationship("Task", back_populates="owner")
 
 

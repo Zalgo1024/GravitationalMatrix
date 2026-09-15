@@ -93,6 +93,17 @@ class Settings:
         self.smtp_sender: str = os.environ.get("SMTP_SENDER", "").strip() or self.smtp_user
         self.smtp_enabled: bool = bool(self.smtp_host and self.smtp_user and self.smtp_pass)
 
+        # —— GitHub OAuth 登录（Phase 3）：配了 Client ID/Secret 才启用 ——
+        # GitHub → Settings → Developer settings → OAuth Apps → New OAuth App；
+        # Authorization callback URL 填 {后端基址}/api/auth/github/callback
+        # （本地即 http://127.0.0.1:8000/api/auth/github/callback；反代部署时按公网后端地址填）。
+        # 未配置时 /api/auth/github/* 返回 404，前端按钮自动隐藏，流程零变化。
+        self.github_client_id: str = os.environ.get("GITHUB_CLIENT_ID", "").strip()
+        self.github_client_secret: str = os.environ.get("GITHUB_CLIENT_SECRET", "").strip()
+        self.github_oauth_enabled: bool = bool(self.github_client_id and self.github_client_secret)
+        # 回调地址默认按请求本身推导（本地/反代都成立）；反代不传 Host 时可用它覆盖。
+        self.github_redirect_uri: str = os.environ.get("GITHUB_REDIRECT_URI", "").strip()
+
         # —— 账户恢复流（忘记密码）——
         # 重置链接的前端基址：本地默认工作台 3000；对外部署时设为公网地址
         # （例如 PUBLIC_BASE_URL=https://app.example.com）。

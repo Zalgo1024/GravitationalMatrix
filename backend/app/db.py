@@ -178,6 +178,8 @@ def init_db() -> None:
             ("verification_code_expires", "DATETIME"),
             # 账户恢复流：会话失效锚点（改密/重置后旧 JWT 失效）
             ("token_valid_after", "DATETIME"),
+            # GitHub OAuth（Phase 3）
+            ("github_id", "VARCHAR(32)"),
         ):
             if col not in ucols:
                 alters.append(f"ALTER TABLE users ADD COLUMN {col} {ddl}")

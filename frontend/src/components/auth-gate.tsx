@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { apiBaseUrl } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 
 /**
@@ -28,6 +29,36 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 const DEFAULT_AUTH_HINT =
   "注册即表示你将在此工作台保存的分析数据归属于本账号；分析模型密钥仅保存在你自己的浏览器中。";
 
+const AUTH_ERROR_TEXT: Record<string, string> = {
+  github_failed: "GitHub 登录失败，请稍后再试",
+  expired: "GitHub 登录会话已过期，请重新点击登录",
+  rate_limited: "尝试过于频繁，请稍后再试",
+  no_verified_email: "GitHub 账号没有已验证的邮箱，无法用于登录",
+  email_conflict: "该邮箱已绑定其他 GitHub 账号",
+  banned: "账号已被封禁",
+};
+
+/** GitHub OAuth 登录卡按钮：后端 /api/auth/github/status enabled=true 才展示。 */
+function GitHubButton() {
+  const { githubEnabled } = useAuth();
+  if (!githubEnabled) return null;
+  return (
+    <>
+      <div className="auth-card__divider"><span>或</span></div>
+      <button
+        className="auth-card__github"
+        type="button"
+        onClick={() => { window.location.href = `${apiBaseUrl()}/api/auth/github/login`; }}
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor">
+          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />
+        </svg>
+        使用 GitHub 登录
+      </button>
+    </>
+  );
+}
+
 /**
  * 登录/注册卡片。默认给工作台用；独立运营后台可传 title/hint 复用，
  * 从而不必先去工作台登录再跳转（见 app/admin-console/layout.tsx）。
@@ -41,6 +72,19 @@ export function AuthCard({ title, hint }: { title?: string; hint?: string } = {}
   const [error, setError] = useState("");
   const [forgot, setForgot] = useState(false);
   const [sentHint, setSentHint] = useState("");
+
+  // OAuth 回跳错误提示：/??auth_error=...（一次性，读后从地址栏清除）
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const err = params.get("auth_error");
+    if (err) {
+      setError(AUTH_ERROR_TEXT[err] ?? "登录失败，请重试");
+      params.delete("auth_error");
+      params.delete("login");
+      const rest = params.toString();
+      window.history.replaceState(null, "", window.location.pathname + (rest ? `?${rest}` : ""));
+    }
+  }, []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -151,6 +195,7 @@ export function AuthCard({ title, hint }: { title?: string; hint?: string } = {}
         <button className="auth-card__submit" type="submit" disabled={busy}>
           {busy ? "请稍候…" : tab === "login" ? "登录" : "注册并进入"}
         </button>
+        <GitHubButton />
         {tab === "login" ? (
           <div className="auth-card__row">
             <button

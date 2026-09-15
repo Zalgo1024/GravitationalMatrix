@@ -17,6 +17,8 @@ interface AuthValue {
   user: AuthUser | null;
   /** true = 后端处于公有模式（需要登录才能用工作台） */
   authRequired: boolean;
+  /** true = 后端已配置 GitHub OAuth（登录卡显示「使用 GitHub 登录」按钮） */
+  githubEnabled: boolean;
   error: string;
   login: (email: string, password: string) => Promise<void>;
   register: (input: { email: string; password: string; display_name?: string }) => Promise<void>;
@@ -43,6 +45,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [authRequired, setAuthRequired] = useState(false);
+  const [githubEnabled, setGithubEnabled] = useState(false);
   const [error, setError] = useState("");
 
   const refresh = useCallback(async () => {
@@ -71,6 +74,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => { void refresh(); }, [refresh]);
+
+  // GitHub 按钮可见性：后端配了 Client ID/Secret 才展示（接口未启用时 enabled=false）
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${apiBaseUrl()}/api/auth/github/status`)
+      .then((r) => (r.ok ? r.json() : { enabled: false }))
+      .then((d) => { if (!cancelled) setGithubEnabled(Boolean(d?.enabled)); })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
 
   const login = useCallback(async (email: string, password: string) => {
     setError("");
@@ -178,11 +191,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo<AuthValue>(
     () => ({
-      loading, user, authRequired, error,
+      loading, user, authRequired, githubEnabled, error,
       login, register, logout, verify, resendVerification,
       forgotPassword, resetPassword, validateResetToken,
     }),
-    [loading, user, authRequired, error, login, register, logout, verify, resendVerification, forgotPassword, resetPassword, validateResetToken],
+    [loading, user, authRequired, githubEnabled, error, login, register, logout, verify, resendVerification, forgotPassword, resetPassword, validateResetToken],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

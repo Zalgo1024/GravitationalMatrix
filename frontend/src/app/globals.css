@@ -1776,6 +1776,12 @@ html[data-theme="dark"] .editor-source textarea { background: oklch(.185 .014 25
 .auth-card__link { border: 0; background: transparent; color: var(--ink-muted, #777); font-size: 12px; font-weight: 700; cursor: pointer; padding: 4px 0; }
 .auth-card__link:hover:not(:disabled) { color: var(--accent, #1a1a1a); }
 .auth-card__link:disabled { opacity: .5; cursor: default; }
+/* GitHub OAuth（Phase 3）：分隔线 + 第三方登录按钮 */
+.auth-card__divider { display: flex; align-items: center; gap: 12px; color: var(--ink-muted, #999); font-size: 11px; font-weight: 700; margin: 2px 0; }
+.auth-card__divider::before, .auth-card__divider::after { content: ""; flex: 1; height: 1px; background: var(--line, #e2e2dd); }
+.auth-card__github { min-height: 42px; display: flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid var(--line, #ddd); border-radius: 8px; background: var(--surface, #fff); color: var(--ink, #111); font-size: 14px; font-weight: 700; cursor: pointer; }
+.auth-card__github:hover { border-color: var(--accent, #1a1a1a); }
+.auth-card__github svg { flex: 0 0 auto; }
 
 /* —— 用户管理页（/admin）—— */
 .admin-page { display: flex; flex-direction: column; gap: 18px; padding: 26px 0; }
