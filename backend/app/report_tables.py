@@ -95,6 +95,27 @@ def _labels_of(ledger: dict) -> dict:
     }
 
 
+def is_junk_source(s: dict) -> bool:
+    """判定垃圾来源条目（不应进入任何表格/地图/附表）。
+
+    典型形态：检索结果标题抽取失败时 title 兜底成了 URL 本身（常见于必应
+    /ck/a 跳转链接），这类条目没有可读标题、类型/质量/日期全空，属于采集
+    半成品，展示出来只会变成「临时数据」噪音。
+    """
+    if not isinstance(s, dict):
+        return True
+    title = str(s.get("title") or "").strip()
+    url = str(s.get("url") or s.get("canonical_url") or "").strip()
+    if not title:
+        return True
+    if title.startswith(("http://", "https://")):
+        return True
+    # 标题与链接同为 bing 跳转壳（u 参数没解出来时 title 常是整条跳转 URL）
+    if "bing.com/ck/a" in title and title == url:
+        return True
+    return False
+
+
 def ledger_rows(table_id: str, ledger: dict) -> list[list]:
     """从研究账本 dict 派生表格行（与 _TABLE_DEFS 列序一一对应）。"""
     if not isinstance(ledger, dict):
@@ -102,7 +123,7 @@ def ledger_rows(table_id: str, ledger: dict) -> list[list]:
     rows: list[list] = []
     if table_id == "sources":
         for i, s in enumerate(ledger.get("sources") or [], 1):
-            if not isinstance(s, dict):
+            if not isinstance(s, dict) or is_junk_source(s):
                 continue
             dup = "重复" if s.get("duplicate_of") else ("首发" if s.get("content_fingerprint") else "")
             rows.append([
@@ -259,7 +280,7 @@ def geo_aggregation(ledger: dict) -> dict:
     # 独立源组 -> [地域命中]；无组的来源按自身 id 兜底（各自独立）
     groups: dict[str, dict] = {}
     for s in ledger.get("sources") or []:
-        if not isinstance(s, dict):
+        if not isinstance(s, dict) or is_junk_source(s):
             continue
         key = str(s.get("independence_group") or s.get("url") or s.get("id") or "")
         if not key:

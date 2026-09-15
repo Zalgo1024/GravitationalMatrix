@@ -20,8 +20,8 @@ import { ResearchComparison } from "./research-comparison";
 import { ActorPerspectives } from "./actor-perspectives";
 import { QuantitativeEvidence } from "./quantitative-evidence";
 import { ResearchBenchmark } from "./research-benchmark";
-import { ReportDataTables } from "./report-data-tables";
-import { ReportGeoMap } from "./report-geo-map";
+import { DATA_TABLES, ReportDataTables } from "./report-data-tables";
+import { GEO_METRICS, ReportGeoMap, type Metric as GeoMetric } from "./report-geo-map";
 import { ReportEnrichmentLauncher } from "./report-enrichment-launcher";
 
 function formatDate(value: string) {
@@ -90,6 +90,8 @@ export function ReportReader({ report, task, onReload }: { report: Report; task?
   const [researchChanges, setResearchChanges] = useState<ResearchChangeSet | undefined>();
   const [changesError, setChangesError] = useState("");
   const [enrichmentOpen, setEnrichmentOpen] = useState(false);
+  const [dataTableId, setDataTableId] = useState("sources");
+  const [geoMetric, setGeoMetric] = useState<GeoMetric>("independent_sources");
   const requestSequence = useRef(0);
 
   useEffect(() => {
@@ -125,6 +127,14 @@ export function ReportReader({ report, task, onReload }: { report: Report; task?
     if (view === "network") {
       return [{ id: "report-inline-graphs", label: "利益关系网络" }];
     }
+    // 数据/地域视图有自己的内容结构，目录对应表/指标（点击即切换），
+    // 不再复用报告正文目录（那些锚点在本视图不存在，等于目录重复）。
+    if (view === "data") {
+      return DATA_TABLES.map((table) => ({ id: `data-${table.id}`, label: table.label }));
+    }
+    if (view === "geo") {
+      return GEO_METRICS.map((item) => ({ id: `geo-${item.id}`, label: item.label }));
+    }
     const items: { id: string; label: string }[] = [
       { id: "report-cover", label: "报告封面" },
       { id: "cover-meta", label: "任务元数据" },
@@ -138,6 +148,17 @@ export function ReportReader({ report, task, onReload }: { report: Report; task?
     }
     return items;
   }, [view, readingMode, readingSections, renderedMarkdown]);
+
+  // 数据/地域视图的目录点击：切换表/指标并滚到内容顶部（锚点元素是视图级的）。
+  function handleOutlineClick(id: string) {
+    if (view === "data" && id.startsWith("data-")) {
+      setDataTableId(id.slice(5));
+      requestAnimationFrame(() => document.getElementById("data-tables")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    } else if (view === "geo" && id.startsWith("geo-")) {
+      setGeoMetric(id.slice(4) as GeoMetric);
+      requestAnimationFrame(() => document.getElementById("geo-map")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    }
+  }
   const coverData: ReportCoverData = {
     title: report.title,
     subtitle: task
@@ -242,7 +263,7 @@ export function ReportReader({ report, task, onReload }: { report: Report; task?
     {!isCurrent && !loadingVersion && <ResearchChangesPanel changes={researchChanges} fromLabel={`v${selectedVersion?.version ?? "?"}`} toLabel={`v${versions.find((item) => item.id === currentVersionId)?.version ?? report.version}`} />}
     {changesError && <p className="delivery-error" role="status">版本正文可阅读，但语义变化对比失败：{changesError}</p>}
     <div className="report-reader__layout">
-      <ReportOutline sections={outline} />
+      <ReportOutline sections={outline} onItemClick={view === "data" || view === "geo" ? handleOutlineClick : undefined} />
       <div className={view === "research" ? "report-document report-document--research" : "report-document"}>
         {loadingVersion ? (
           <div className="report-version-loading" aria-busy="true">正在读取历史版本...</div>
@@ -256,9 +277,9 @@ export function ReportReader({ report, task, onReload }: { report: Report; task?
             <div id="research-benchmark" className="research-anchor"><ResearchBenchmark taskId={report.taskId} versionId={selectedVersionId} /></div>
           </>
         ) : view === "data" ? (
-          <ReportDataTables taskId={report.taskId} versionId={selectedVersionId} />
+          <ReportDataTables taskId={report.taskId} versionId={selectedVersionId} tableId={dataTableId} onTableIdChange={setDataTableId} />
         ) : view === "geo" ? (
-          <ReportGeoMap taskId={report.taskId} versionId={selectedVersionId} />
+          <ReportGeoMap taskId={report.taskId} versionId={selectedVersionId} metric={geoMetric} onMetricChange={setGeoMetric} />
         ) : view === "network" ? (
           <AnalysisNetwork
             taskId={report.taskId}

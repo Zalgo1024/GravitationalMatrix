@@ -18,7 +18,7 @@ import { ensureChinaMap, ensureCityMap, type GeoPayload, type GeoRegion } from "
 
 echarts.use([MapChart, TooltipComponent, VisualMapComponent, CanvasRenderer]);
 
-type Metric = "independent_sources" | "sources" | "share";
+export type Metric = "independent_sources" | "sources" | "share";
 
 const sourceTypeLabels: Record<string, string> = {
   official: "官方发布",
@@ -31,17 +31,22 @@ const sourceTypeLabels: Record<string, string> = {
   unknown: "来源未分类",
 };
 
-const METRICS: { id: Metric; label: string }[] = [
+export const GEO_METRICS: { id: Metric; label: string }[] = [
   { id: "independent_sources", label: "独立源数" },
   { id: "sources", label: "来源数" },
   { id: "share", label: "份额" },
 ];
 
-export function ReportGeoMap({ taskId, versionId }: { taskId: string; versionId?: string | null }) {
+export function ReportGeoMap({ taskId, versionId, metric: metricProp, onMetricChange }: { taskId: string; versionId?: string | null; metric?: Metric; onMetricChange?: (id: Metric) => void }) {
   const [payload, setPayload] = useState<GeoPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [metric, setMetric] = useState<Metric>("independent_sources");
+  const [localMetric, setLocalMetric] = useState<Metric>("independent_sources");
+  const metric = metricProp ?? localMetric;
+  function switchMetric(id: Metric) {
+    if (onMetricChange) onMetricChange(id);
+    else setLocalMetric(id);
+  }
   const [selected, setSelected] = useState<string>("");
   const [drill, setDrill] = useState<{ code: string; name: string } | null>(null);
   const [drillError, setDrillError] = useState("");
@@ -61,7 +66,7 @@ export function ReportGeoMap({ taskId, versionId }: { taskId: string; versionId?
     return () => { cancelled = true; };
   }, [taskId, versionId]);
 
-  const metricLabel = METRICS.find((item) => item.id === metric)?.label ?? "";
+  const metricLabel = GEO_METRICS.find((item) => item.id === metric)?.label ?? "";
 
   // 时间轴帧数据：截至当前月的**累计**独立源数（扩散是「点亮」过程，累计更直观）
   const timelineFrames = useMemo(() => {
@@ -201,17 +206,17 @@ export function ReportGeoMap({ taskId, versionId }: { taskId: string; versionId?
   const hiddenItems = selectedRegion ? Math.max(0, (selectedRegion.item_total ?? 0) - (selectedRegion.items ?? []).length) : 0;
   const currentMonth = playIndex !== null && payload?.timeline?.length ? payload.timeline[Math.min(playIndex, payload.timeline.length - 1)].month : "";
 
-  return <section className="report-geo" aria-label="地域分布图">
+  return <section className="report-geo" id="geo-map" aria-label="地域分布图">
     <header className="report-geo__bar">
       <div className="report-geo__tabs" role="tablist" aria-label="地域指标切换">
-        {METRICS.map((item) => (
+        {GEO_METRICS.map((item) => (
           <button
             key={item.id}
             type="button"
             role="tab"
             aria-selected={metric === item.id}
             className={metric === item.id ? "data-tab data-tab--active" : "data-tab"}
-            onClick={() => setMetric(item.id)}
+            onClick={() => switchMetric(item.id)}
           >
             {item.label}
           </button>

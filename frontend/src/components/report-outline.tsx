@@ -7,7 +7,7 @@ export interface ReportOutlineSection {
   label: string;
 }
 
-export function ReportOutline({ sections }: { sections: ReportOutlineSection[] }) {
+export function ReportOutline({ sections, onItemClick }: { sections: ReportOutlineSection[]; onItemClick?: (id: string) => void }) {
   const [activeId, setActiveId] = useState(sections[0]?.id ?? "");
 
   useEffect(() => {
@@ -29,6 +29,6 @@ export function ReportOutline({ sections }: { sections: ReportOutlineSection[] }
 
   return <aside className="report-outline" aria-label="报告目录">
     <span className="eyebrow">目录</span>
-    {sections.map((section, index) => <a href={`#${section.id}`} aria-current={activeId === section.id ? "location" : undefined} onClick={() => setActiveId(section.id)} key={section.id}>{String(index + 1).padStart(2, "0")} {section.label}</a>)}
+    {sections.map((section, index) => <a href={`#${section.id}`} aria-current={activeId === section.id ? "location" : undefined} onClick={(event) => { if (onItemClick) { event.preventDefault(); onItemClick(section.id); } setActiveId(section.id); }} key={section.id}>{String(index + 1).padStart(2, "0")} {section.label}</a>)}
   </aside>;
 }

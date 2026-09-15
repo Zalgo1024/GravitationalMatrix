@@ -14,6 +14,7 @@
 """
 from __future__ import annotations
 
+import base64
 import difflib
 import json
 import logging
@@ -178,6 +179,28 @@ def _search_duckduckgo(query: str, max_results: int) -> list[SearchHit]:
     raise last_exc  # type: ignore[misc]
 
 
+def _extract_bing_url(href: str) -> str:
+    """必应网页版 /ck/a 重定向链接还原真实 URL（u=a1<base64url> 参数）。
+
+    必应对部分结果（尤其广告位与风险站点）返回 bing.com/ck/a 跳转壳，
+    直接入库会出现「标题是整条跳转 URL」的垃圾来源；解不出来就原样返回。
+    """
+    if not href or "bing.com/ck/a" not in href:
+        return href
+    try:
+        qs = urllib.parse.parse_qs(urllib.parse.urlparse(href).query)
+        u = (qs.get("u") or [""])[0]
+        if u.startswith("a1"):
+            payload = u[2:]
+            payload += "=" * (-len(payload) % 4)
+            real = base64.urlsafe_b64decode(payload).decode("utf-8", "replace")
+            if real.startswith("http"):
+                return real
+    except Exception:  # noqa: BLE001 — 解码失败一律回退原链接
+        pass
+    return href
+
+
 def _search_bing_html(query: str, max_results: int) -> list[SearchHit]:
     """零 key 兜底：GET https://www.bing.com/search?q={query}（UA=浏览器），lxml 解析 b_algo。
 
@@ -197,7 +220,7 @@ def _search_bing_html(query: str, max_results: int) -> list[SearchHit]:
         if not a:
             continue
         title = "".join(a[0].itertext()).strip()
-        url = (a[0].get("href") or "").strip()
+        url = _extract_bing_url((a[0].get("href") or "").strip())
         if not url:
             continue
         snippet = ""
