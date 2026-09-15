@@ -1,6 +1,6 @@
 @echo off
 setlocal
-title Triad Admin Console - Stop
+title 引力力矩运营后台 - Stop
 cd /d "%~dp0"
 
 echo Stopping the admin console (port 3001 only)...

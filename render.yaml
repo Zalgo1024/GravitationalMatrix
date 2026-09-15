@@ -2,9 +2,9 @@
 # 依赖仓库根目录的 Dockerfile；环境变量见下方 envVars。
 services:
   - type: web
-    name: triad-workbench
+    name: gravitymoment
     runtime: docker
-    repo: https://github.com/Zalgo1024/SanYuanJieGouBenDiGongZuoTai
+    repo: https://github.com/Zalgo1024/GravityMoment
     plan: free
     dockerfilePath: ./Dockerfile
     healthCheckPath: /

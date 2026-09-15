@@ -1,10 +1,10 @@
 @echo off
 setlocal
-title Triad Analysis - Verify (core regression check)
+title 引力力矩 - 体检 (core regression check)
 cd /d "%~dp0"
 
 echo ============================================
-echo   Triad Analysis System - Verify
+echo   引力力矩 - 体检
 echo   Run this after changing code to confirm
 echo   core features are not broken.
 echo ============================================

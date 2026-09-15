@@ -31,7 +31,7 @@ export function ReportCoverPage({ data }: { data: ReportCoverData }) {
   return (
     <div className="report-cover">
       <section className="report-cover__overview" id="report-cover">
-        <span className="eyebrow">三元结构分析报告 · {data.analysisType}</span>
+        <span className="eyebrow">引力力矩分析报告 · {data.analysisType}</span>
         <h2>{data.title}</h2>
         <p>{data.subtitle}</p>
       </section>

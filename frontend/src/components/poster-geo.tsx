@@ -140,7 +140,7 @@ export function PosterGeo({ taskId }: { taskId: string }) {
 
   return <article className="poster" aria-label="地域分布画报">
     <header className="poster__masthead">
-      <span className="poster__kicker">地域分布画报 · 三元结构分析</span>
+      <span className="poster__kicker">地域分布画报 · 引力力矩</span>
       <h1>{title || "未命名报告"}</h1>
       <p className={`poster__verdict poster__verdict--${overall}`}>
         <MapPin size={15} />{overallLabels[overall]}{classification?.label ? ` — ${classification.label}` : ""}

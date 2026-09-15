@@ -53,7 +53,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <aside className="app-sidebar">
         <Link className="app-brand" href="/" aria-label="返回产品首页" title="返回产品首页">
           <span>三</span>
-          <div><strong>Triad</strong><small>Structure Analysis</small></div>
+          <div><strong>引力力矩</strong><small>GravityMoment</small></div>
         </Link>
         <nav className="app-navigation" aria-label="主导航">
           {navigation.map(({ href, label, icon: Icon }) => (

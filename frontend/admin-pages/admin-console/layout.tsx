@@ -107,7 +107,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
           <ShieldCheck size={18} />
           <div>
             <strong>运营后台</strong>
-            <small>Triad Admin Console</small>
+            <small>引力力矩运营后台</small>
           </div>
         </div>
         <nav className="admin-console__nav" aria-label="运营后台导航">
