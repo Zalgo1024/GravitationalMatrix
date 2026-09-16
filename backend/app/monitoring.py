@@ -195,8 +195,15 @@ def record_monitor_completion(task_id: str) -> None:
 
 
 async def _scheduler() -> None:
+    from app.maintenance import maybe_cleanup
+
     while True:
         await asyncio.sleep(60)
+        # 即时导出物磁盘回收（内部 24h 节流，失败不影响主流程）
+        try:
+            await asyncio.to_thread(maybe_cleanup)
+        except Exception:  # noqa: BLE001
+            logger.exception("即时导出清理调度异常")
         try:
             await asyncio.to_thread(run_due_monitors)
         except Exception:  # noqa: BLE001

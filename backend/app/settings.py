@@ -2,6 +2,10 @@
 
 密钥管理铁律：API Key 只允许通过 .env / 环境变量注入，禁止写入代码或仓库。
 内部使用：后端默认绑定 127.0.0.1（不对外监听），已通过 HOST/PORT 可配。
+
+部署红线：本服务**必须单进程部署**（uvicorn 不要加 --workers、不要多实例共享
+同一 SQLite）。任务队列认领、WebSocket 进度订阅、登录限速器都是进程内存态，
+多进程会直接分裂（任务被跑两遍 / 限速形同虚设）。并发调节用 WORKER_COUNT。
 """
 import os
 from pathlib import Path

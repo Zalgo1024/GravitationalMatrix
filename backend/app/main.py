@@ -14,6 +14,7 @@ reports / materials / system）。本文件只负责装配 app、CORS、startup 
 """
 import logging
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
@@ -30,7 +31,52 @@ from app.settings import settings as app_settings
 
 logger = logging.getLogger("app")
 
-app = FastAPI(title="引力矩阵引擎 - 后端（内部使用）")
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    """启动/关停钩子（替代已弃用的 @app.on_event("startup")）。
+
+    启动序：建表 → 种子项目 → admin 账号 + 存量归属回填 → 恢复中断任务 →
+    启动工人池 + 持续追踪/维护调度。
+    """
+    logger.info(
+        "[main] 启动：public_mode=%s admin_api=%s smtp=%s",
+        app_settings.public_mode,
+        ADMIN_API_ENABLED,
+        app_settings.smtp_enabled,
+    )
+    if app_settings.public_mode and ADMIN_API_ENABLED:
+        logger.warning(
+            "[main] 公网模式下仍开启了管理端路由（/api/admin/*）。"
+            "若这是对外发布的进程，请设置 ADMIN_API_ENABLED=0；仅在你自己的私有实例上保留开启。"
+        )
+    init_db()
+    seed_projects()
+    seed_admin_user()
+    taskq.recover_interrupted()
+    taskq.start_workers()
+    from app.monitoring import start_monitor_scheduler
+
+    start_monitor_scheduler()
+    yield
+
+
+# —— 管理端路由门控（A2/S5）——
+# 公开部署的进程**不注册任何 /api/admin/* 路由**：管理面与用户面在路由层彻底分开，
+# 避免「一个中间件漏挂 / 一个路由 bug」就把管理端点暴露给未登录访客。
+# 取值（环境变量 ADMIN_API_ENABLED）：
+#   "1"/true  → 强制开启（你自己的私有实例在 backend/.env 里显式设 1）
+#   "0"/false → 强制关闭（对外发布建议显式设 0）
+#   未设置    → 自动：本地单机(PUBLIC_MODE=0) 开启；公网(PUBLIC_MODE=1) 关闭
+_raw_admin_flag = os.environ.get("ADMIN_API_ENABLED", "").strip().lower()
+if _raw_admin_flag in {"1", "true", "yes", "on"}:
+    ADMIN_API_ENABLED = True
+elif _raw_admin_flag in {"0", "false", "no", "off"}:
+    ADMIN_API_ENABLED = False
+else:
+    ADMIN_API_ENABLED = not app_settings.public_mode
+
+app = FastAPI(title="引力矩阵引擎 - 后端（内部使用）", lifespan=_lifespan)
 
 # 仅允许本机前端跨域，不外放。来源由 CORS_ORIGINS 配置（A1），
 # 默认放行工作台 3000 + 独立运营后台 3001，localhost 与 127.0.0.1 均含。
@@ -120,27 +166,3 @@ app.include_router(search.router)
 app.include_router(cases.router)
 app.include_router(monitoring.router)
 app.include_router(benchmarks.router)
-
-
-@app.on_event("startup")
-async def _startup() -> None:
-    # 1) 建表  2) 种子项目  3) admin 账号 + 存量归属回填  4) 恢复中断任务  5) 启动工人池
-    logger.info(
-        "[main] 启动：public_mode=%s admin_api=%s smtp=%s",
-        app_settings.public_mode,
-        ADMIN_API_ENABLED,
-        app_settings.smtp_enabled,
-    )
-    if app_settings.public_mode and ADMIN_API_ENABLED:
-        logger.warning(
-            "[main] 公网模式下仍开启了管理端路由（/api/admin/*）。"
-            "若这是对外发布的进程，请设置 ADMIN_API_ENABLED=0；仅在你自己的私有实例上保留开启。"
-        )
-    init_db()
-    seed_projects()
-    seed_admin_user()
-    taskq.recover_interrupted()
-    taskq.start_workers()
-    from app.monitoring import start_monitor_scheduler
-
-    start_monitor_scheduler()

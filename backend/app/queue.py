@@ -10,6 +10,7 @@
 """
 import asyncio
 import logging
+import os
 import re
 import threading
 import time
@@ -22,7 +23,10 @@ from app.settings import settings
 
 logger = logging.getLogger(__name__)
 
-WORKER_COUNT = 6  # 6 并发：缓解连续多任务排队，体感不再"卡住"（本机 LLM 走远程 API，CPU 不是瓶颈）
+# 工人并发数：可用 WORKER_COUNT 环境变量调整（默认 6）。
+# 注意：限速器/进度订阅/任务认领都是进程内存态，本服务必须单进程部署
+# （uvicorn 不要加 --workers，也不要多实例共享一个 SQLite）。
+WORKER_COUNT = max(1, int(os.environ.get("WORKER_COUNT", "6")))
 
 # 实时进度订阅（仅存在于有客户端连 WS 期间，ephemeral，非持久）
 # 同一任务允许多个客户端各自订阅（每个 client 一个 queue），互不顶掉；

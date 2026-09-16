@@ -25,6 +25,21 @@ os.environ["GENERATED_DIR"] = str(_TEST_TMP / "generated")
 # 公网模式行为由 test_auth_isolation.py 用 monkeypatch 单独开启，互不影响。
 os.environ["PUBLIC_MODE"] = "0"
 
+# 回归基线补充（2026-09-16）：backend/.env 已配置真实 SMTP（QQ 邮箱）与 GitHub
+# OAuth（真机登录用），dotenv 会把它们读进 settings —— 测试必须强制回到
+# 「SMTP 未配置 / OAuth 未配置」基线，否则 auth_recovery / auth_isolation /
+# auth_github 一批用例会真连 QQ SMTP（SMTPServerDisconnected）或误判 enabled。
+# 单独测公网行为的用例（test_auth_isolation / test_auth_github）自行 monkeypatch 打开。
+from app.settings import settings as _app_settings  # noqa: E402
+
+_app_settings.smtp_host = ""
+_app_settings.smtp_user = ""
+_app_settings.smtp_pass = ""
+_app_settings.smtp_enabled = False
+_app_settings.github_client_id = ""
+_app_settings.github_client_secret = ""
+_app_settings.github_oauth_enabled = False
+
 
 @pytest.fixture(scope="session")
 def _test_env():

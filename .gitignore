@@ -67,3 +67,6 @@ _backup_setup.log
 
 # ----- 损坏仓库留档（2026-09-07 pack 文件丢失事故，确认无遗留数据后可删） -----
 /.git_broken_*/
+
+# SQLite 备份输出（backup_db.py）
+backend/backups/
