@@ -1,6 +1,7 @@
-"""多平台采集器（F1/F2 · 下一代升级 第 1–2 周切片）。
+"""多平台采集器（F1/F2 · 第一阶段报告工具增强 第 1–2 周切片）。
 
-设计边界（见 docs/NEXT_GEN_UPGRADE_PLAN.md）：
+设计边界（见 docs/PHASE1_REPORT_TOOL_UPGRADE_PLAN.md；舆情侧的全局采集见
+docs/PHASE2_OPINION_WORKBENCH_PLAN.md）：
 - L1 来源默认开放：websearch / rss / govdoc / hotlist（全部零 Key 或配置驱动）；
 - L2 社交平台（微博/抖音等）不在此实现：合规要求外部进程 + 用户自担许可（MediaCrawler
   许可为研究/非商用），未来以适配器接入，默认 OFF；
