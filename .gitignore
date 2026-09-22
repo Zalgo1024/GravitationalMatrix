@@ -54,6 +54,9 @@ USER_SYSTEM_PLAN.md
 备份到GitHub.bat
 _废弃_旧备份方案/
 
+# ----- API 推送兜底工具（本机 git 直连 github 被 502 阻断时改走 REST API，本地工具，不入库） -----
+.api_push*.py
+
 # ----- 引擎调试预览页（本地调试产物，不入库） -----
 /outputs/
 
