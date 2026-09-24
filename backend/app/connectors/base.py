@@ -39,6 +39,8 @@ class CollectedItem:
     published_at: str | None = None
     region_code: str | None = None
     region_name: str | None = None
+    city_code: str | None = None   # S3：市级识别（recognize_region_detailed），未命中为 None
+    city_name: str | None = None
     region_source: str = "unknown"  # issuer/title/body/unknown（recognize_region 口径）
     engagement: int | None = None
     content_text: str = ""

@@ -2,7 +2,9 @@
 
 - 所有端点受 FEED_ENABLED 门控：关闭时统一返回 {"error": "feed_disabled"}；
 - 认证复用既有 get_current_user（本地模式自动放行，公网模式 JWT cookie）；
-- POST /api/feed/collect 手动触发一轮：公共模式限 admin。
+- POST /api/feed/collect 手动触发一轮：公共模式限 admin；
+- S3：条目带 city_code/city_name（市级识别），/geo 返回 regions+cities 双层聚合；
+- S4：条目带 sentiment/sentiment_score（词典法标注），/items 支持 sentiment 筛选。
 """
 from __future__ import annotations
 
@@ -10,7 +12,7 @@ from fastapi import APIRouter, Depends
 
 from app.auth import get_current_user
 from app.db import SessionLocal
-from app.feed_store import feed_geo, feed_stats, query_hotlist, query_items
+from app.feed_store import feed_geo, feed_geo_cities, feed_stats, query_hotlist, query_items
 from app.settings import settings
 
 router = APIRouter()
@@ -31,7 +33,11 @@ def _item_row(item) -> dict:
         "collected_at": item.collected_at.isoformat() if item.collected_at else None,
         "summary": item.summary,
         "hot_score": item.hot_score,
+        "sentiment": item.sentiment,
+        "sentiment_score": item.sentiment_score,
         "region_code": item.region_code,
+        "city_code": item.city_code,
+        "city_name": item.city_name,
         "region_source": item.region_source,
     }
 
@@ -41,6 +47,7 @@ def list_feed_items(
     category: str | None = None,
     platform: str | None = None,
     q: str | None = None,
+    sentiment: str | None = None,
     window: int = 72,
     limit: int = 50,
     offset: int = 0,
@@ -54,6 +61,7 @@ def list_feed_items(
             category=category,
             platform=platform,
             q=q,
+            sentiment=sentiment,
             window_hours=window,
             limit=limit,
             offset=offset,
@@ -89,7 +97,7 @@ def feed_item_detail(item_id: str, current: dict = Depends(get_current_user)):
         if row is None:
             return {"status": "not_found"}
         data = _item_row(row)
-        data["sentiment"] = row.sentiment  # S4 接入前恒为 None，前端按未标注展示
+        data["raw_meta"] = row.raw_meta
         return data
 
 
@@ -106,7 +114,10 @@ def feed_geo_api(window: int = 72, current: dict = Depends(get_current_user)):
     if not settings.feed_enabled:
         return _DISABLED
     with SessionLocal() as db:
-        return {"regions": feed_geo(db, window_hours=window)}
+        return {
+            "regions": feed_geo(db, window_hours=window),
+            "cities": feed_geo_cities(db, window_hours=window),
+        }
 
 
 @router.post("/api/feed/collect")

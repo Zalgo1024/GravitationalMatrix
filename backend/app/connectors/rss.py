@@ -10,7 +10,7 @@ import re
 import xml.etree.ElementTree as ET
 
 from app.connectors.base import CollectedItem
-from app.connectors.regions import recognize_region
+from app.connectors.regions import recognize_region_detailed
 from app.search import _assert_safe_url, _http_get, _safe_msg  # 复用 SSRF 防护与超时 HTTP
 
 _TAG_CLEAN = re.compile(r"<[^>]+>")
@@ -68,7 +68,7 @@ def parse_feed(xml_text: str, feed_name: str, limit: int = 15) -> list[Collected
         title, url = title.strip(), (url or "").strip()
         if not title or not url.startswith("http"):
             continue
-        region = recognize_region(f"{title}\n{snippet}")
+        region = recognize_region_detailed(f"{title}\n{snippet}")
         items.append(
             CollectedItem(
                 kind="rss",

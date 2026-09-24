@@ -166,6 +166,15 @@ def init_db() -> None:
         ):
             if col not in mcols:
                 alters.append(f"ALTER TABLE materials ADD COLUMN {col} {ddl}")
+        # S3：feed_items 市级地域列（2b4bcb9 建表后追加，旧库补列）
+        if "feed_items" in inspect(engine).get_table_names():
+            fcols = {c["name"] for c in inspect(engine).get_columns("feed_items")}
+            for col, ddl in (
+                ("city_code", "VARCHAR(12)"),
+                ("city_name", "VARCHAR(32)"),
+            ):
+                if col not in fcols:
+                    alters.append(f"ALTER TABLE feed_items ADD COLUMN {col} {ddl}")
         # 用户系统 Phase 0：users 表补 role / is_banned / last_seen_at（旧库可能缺）
         ucols = {c["name"] for c in inspect(engine).get_columns("users")}
         for col, ddl in (

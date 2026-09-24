@@ -340,9 +340,11 @@ class FeedItem(Base):
 
     - 去重：dedup_key 优先取 content_fingerprint（同文异链），空则取 canonical_url
       （同链异文）；同源转载按 independence_group 归并，统计只算一条独立源。
-    - 地域：region_code 来自 connectors/regions.recognize_region，识别不出一律
+    - 地域：region_code/city_code 来自 connectors/regions.recognize_region_detailed
+      （S3 起市级优先，市级命中时 region_code 为所属省码），识别不出一律
       unknown 且**不进统计**（红线：地域不编造）。
-    - 情感：sentiment / sentiment_score / sentiment_source 本轮仅预留字段（S4 未接）。
+    - 情感：sentiment / sentiment_score / sentiment_source 由 feed_sentiment
+      词典法标注（S4），source=lexicon；未来可换 model/llm 重标。
     """
 
     __tablename__ = "feed_items"
@@ -361,10 +363,12 @@ class FeedItem(Base):
     collected_at = Column(DateTime(timezone=True), default=_now, index=True)
     summary = Column(Text, nullable=True)
     hot_score = Column(Integer, nullable=True)    # 热榜 engagement
-    sentiment = Column(String(16), nullable=True)          # positive/neutral/negative（S4 预留）
-    sentiment_score = Column(Float, nullable=True)         # S4 预留
-    sentiment_source = Column(String(16), nullable=True)   # lexicon/model/llm/manual（S4 预留）
+    sentiment = Column(String(16), nullable=True)          # positive/neutral/negative（S4 词典法）
+    sentiment_score = Column(Float, nullable=True)         # [-1, 1]，词典法：正负词差/3 截断
+    sentiment_source = Column(String(16), nullable=True)   # lexicon（S4 词典法）
     region_code = Column(String(12), nullable=True, index=True)
+    city_code = Column(String(12), nullable=True, index=True)  # S3：市级码（命中市名时填）
+    city_name = Column(String(32), nullable=True)
     region_source = Column(String(16), default="unknown")  # issuer/title/body/unknown
     raw_meta = Column(JSON, nullable=True)
 

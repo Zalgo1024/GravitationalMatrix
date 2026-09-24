@@ -12,7 +12,7 @@ import json
 import os
 
 from app.connectors.base import CollectedItem
-from app.connectors.regions import recognize_region
+from app.connectors.regions import recognize_region_detailed
 from app.search import _assert_safe_url, _http_get, _safe_msg
 
 
@@ -43,7 +43,7 @@ def collect_hotlist(max_items: int = 30) -> tuple[list[CollectedItem], str | Non
         except (TypeError, ValueError):
             engagement = None
         source_label = str(row.get("source") or row.get("platform") or "热榜").strip()[:20]
-        region = recognize_region(f"{title}\n{str(row.get('summary') or '')}")
+        region = recognize_region_detailed(f"{title}\n{str(row.get('summary') or '')}")
         items.append(
             CollectedItem(
                 kind="hotlist",
