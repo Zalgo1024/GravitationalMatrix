@@ -3,11 +3,14 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Archive,
   ChevronDown,
   LayoutGrid,
   LogOut,
+  Newspaper,
   Plus,
   RefreshCw,
+  Scale,
   Settings,
   ShieldCheck,
   Sparkles,
@@ -22,6 +25,9 @@ import { NavigationBackButton } from "./navigation-back-button";
 const navigation = [
   { href: "/dashboard", label: "工作台", icon: LayoutGrid },
   { href: "/analysis", label: "新建分析", icon: Plus },
+  { href: "/today", label: "今日资讯", icon: Newspaper },
+  { href: "/archive", label: "事件档案", icon: Archive },
+  { href: "/benchmark", label: "对标分析", icon: Scale },
   { href: "/settings", label: "设置", icon: Settings },
 ];
 

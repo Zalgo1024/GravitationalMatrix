@@ -14,6 +14,8 @@ export function AnalysisPage() {
   const { state, refreshWorkspace } = useAppStore();
   const reportId = searchParams.get("reportId");
   const purpose = searchParams.get("purpose");
+  // /today「起分析」等外部入口的预填：无源报告时退回 query prompt
+  const promptParam = searchParams.get("prompt");
   const sourceReport = state.reports.find((report) => report.id === reportId);
   const purposeCopy: Record<string, string> = {
     continue: "继续分析这份报告中的关键问题：",
@@ -21,7 +23,9 @@ export function AnalysisPage() {
     review: "请审阅这份报告中的结论、假设与待验证之处：",
     rewrite: "请基于这份报告重组表达，并保留事实与推断的边界：",
   };
-  const initialPrompt = sourceReport ? `${purposeCopy[purpose ?? "continue"] ?? purposeCopy.continue}\n报告：${sourceReport.title}\n` : "";
+  const initialPrompt = sourceReport
+    ? `${purposeCopy[purpose ?? "continue"] ?? purposeCopy.continue}\n报告：${sourceReport.title}\n`
+    : (promptParam ?? "");
 
   async function create(input: Parameters<NonNullable<React.ComponentProps<typeof AnalysisCreation>["onCreate"]>>[0]) {
     // 分析skill 后端：POST /api/analyze 自动建任务并后台运行（无需 codex 的 research/run 分步）。

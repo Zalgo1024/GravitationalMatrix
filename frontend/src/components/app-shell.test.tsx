@@ -36,12 +36,15 @@ describe("AppShell backend status", () => {
     expect(storeMocks.refreshWorkspace).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps only the consolidated primary navigation", () => {
+  it("keeps the six-item primary navigation", () => {
     render(<AppShell><div>工作区内容</div></AppShell>);
 
     const navigation = screen.getByRole("navigation", { name: "主导航" });
     expect(navigation).toHaveTextContent("工作台");
     expect(navigation).toHaveTextContent("新建分析");
+    expect(navigation).toHaveTextContent("今日资讯");
+    expect(navigation).toHaveTextContent("事件档案");
+    expect(navigation).toHaveTextContent("对标分析");
     expect(navigation).toHaveTextContent("设置");
     expect(navigation).not.toHaveTextContent("项目");
     expect(navigation).not.toHaveTextContent("材料库");
