@@ -321,7 +321,7 @@ async def ws_progress(task_id: str, ws: WebSocket):
     # 先订阅，再以数据库快照为权威当前状态发送（避免漏掉订阅前已发出的进度）
     q = taskq.subscribe(task_id)
     with SessionLocal() as db:
-        t = task_owned(db, task_id, current)
+        t = task_owned(db, task_id, ws_user)
         if not t:
             await ws.send_json({"status": "not_found"})
             taskq.unsubscribe(task_id, q)
