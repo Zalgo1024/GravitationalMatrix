@@ -153,6 +153,8 @@ export function TodayScreen() {
           )}
           <p className="wb2-footer-note">
             条目由采集服务自动去重入库；情感与地域标注为后续模块，当前未标注的字段一律留空，不编数据。
+            {" "}
+            <Link href="/map">舆情地图 ›</Link>
           </p>
         </>
       )}

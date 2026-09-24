@@ -64,6 +64,11 @@
 .spec-code { border: 1px solid var(--line); border-radius: var(--radius-xs); background: var(--surface-muted); color: var(--ink); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 9px; line-height: 1.7; padding: 10px 12px; overflow-x: auto; }
 .spec-badge { display: inline-block; border-radius: 3px; padding: 2px 7px; font-size: 10px; font-weight: 500; }
 
+/* ===== /map 舆情地图 ===== */
+.map-figure { margin: 0; display: grid; gap: 8px; }
+.map-figure .map-image { width: 100%; max-width: 1000px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--gm-map-default); }
+.map-figure figcaption { color: var(--ink-muted); font-size: var(--fs-xs); }
+
 @media (max-width: 660px) {
   .today-card { grid-template-columns: 26px minmax(0, 1fr); }
   .today-card__actions { grid-column: 2; }

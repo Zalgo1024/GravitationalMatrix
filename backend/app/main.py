@@ -24,7 +24,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app import queue as taskq
 from app.db import init_db, seed_admin_user, seed_projects
-from app.routers import admin_ops, analyze, auth, benchmarks, cases, collect, feed, github_oauth, materials, monitoring, projects, regions, reports, search, settings, system, tasks
+from app.routers import admin_ops, analyze, auth, benchmarks, cases, collect, feed, geo_map, github_oauth, materials, monitoring, projects, regions, reports, search, settings, system, tasks
 # 注意：上面 routers 里的 `settings` 是路由模块，此处配置实例必须另起别名，
 # 否则会覆盖 `settings.router` 导致装配失败。
 from app.settings import settings as app_settings
@@ -167,3 +167,4 @@ app.include_router(cases.router)
 app.include_router(monitoring.router)
 app.include_router(benchmarks.router)
 app.include_router(feed.router)  # S2 舆情流：FEED_ENABLED=0 时端点统一返回 feed_disabled
+app.include_router(geo_map.router)  # 城市级舆情地图：同受 FEED_ENABLED 门控
