@@ -333,3 +333,52 @@ class AuditLog(Base):
     detail = Column(JSON, nullable=True)  # 动作附加信息（前后值等）
     ip = Column(String(64), nullable=True)
     created_at = Column(DateTime(timezone=True), default=_now, index=True)
+
+
+class FeedItem(Base):
+    """S2 全局舆情流：与任务/项目解耦的采集条目账页（方案 (1) S2）。
+
+    - 去重：dedup_key 优先取 content_fingerprint（同文异链），空则取 canonical_url
+      （同链异文）；同源转载按 independence_group 归并，统计只算一条独立源。
+    - 地域：region_code 来自 connectors/regions.recognize_region，识别不出一律
+      unknown 且**不进统计**（红线：地域不编造）。
+    - 情感：sentiment / sentiment_score / sentiment_source 本轮仅预留字段（S4 未接）。
+    """
+
+    __tablename__ = "feed_items"
+
+    id = Column(String(32), primary_key=True, default=lambda: uuid.uuid4().hex)
+    dedup_key = Column(String(64), nullable=True, index=True)
+    title = Column(String(500), nullable=False)
+    url = Column(String(1000), nullable=True)
+    canonical_url = Column(String(1000), nullable=True)
+    content_fingerprint = Column(String(64), nullable=True)
+    independence_group = Column(String(200), nullable=True)
+    platform = Column(String(80), nullable=True)  # rss:<名称> | hotlist:<榜单名>
+    kind = Column(String(16), nullable=True)      # rss | hotlist
+    category = Column(String(32), nullable=True, index=True)  # 政策/经济/科技/社会/... 未分类=通用
+    published_at = Column(DateTime(timezone=True), nullable=True)
+    collected_at = Column(DateTime(timezone=True), default=_now, index=True)
+    summary = Column(Text, nullable=True)
+    hot_score = Column(Integer, nullable=True)    # 热榜 engagement
+    sentiment = Column(String(16), nullable=True)          # positive/neutral/negative（S4 预留）
+    sentiment_score = Column(Float, nullable=True)         # S4 预留
+    sentiment_source = Column(String(16), nullable=True)   # lexicon/model/llm/manual（S4 预留）
+    region_code = Column(String(12), nullable=True, index=True)
+    region_source = Column(String(16), default="unknown")  # issuer/title/body/unknown
+    raw_meta = Column(JSON, nullable=True)
+
+
+class FeedCollectRun(Base):
+    """S9 采集健康：每源每轮采集的运行记录（只追加）。"""
+
+    __tablename__ = "feed_collect_runs"
+
+    id = Column(String(32), primary_key=True, default=lambda: uuid.uuid4().hex)
+    source = Column(String(32), nullable=False, index=True)  # rss | hotlist
+    started_at = Column(DateTime(timezone=True), default=_now)
+    finished_at = Column(DateTime(timezone=True), nullable=True)
+    fetched = Column(Integer, default=0)
+    inserted = Column(Integer, default=0)
+    deduped = Column(Integer, default=0)
+    error = Column(String(500), nullable=True)

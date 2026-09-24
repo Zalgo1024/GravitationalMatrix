@@ -135,6 +135,15 @@ class Settings:
         # 检索策略：auto(默认，BING→BRAVE→DDG 自动降级) | bing | brave | duckduckgo
         self.search_strategy: str = os.environ.get("SEARCH_STRATEGY", "auto").lower()
 
+        # —— S2 全局舆情流（feed 最小闭环）——
+        # FEED_ENABLED 默认 0：路由注册但统一返回 feed_disabled、调度不采集，
+        # 对既有产品形态零回归；数据源配好后在 .env 显式开 1。
+        self.feed_enabled: bool = (
+            os.environ.get("FEED_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
+        )
+        # 采集间隔（分钟）：挂既有 monitoring 调度循环，节流执行，不新开线程。
+        self.feed_interval_min: int = int(os.environ.get("FEED_INTERVAL_MIN", "15"))
+
     @property
     def search_configured(self) -> bool:
         """是否具备可用的检索能力（T1 起：DDG HTML 零 Key 恒可执行）。

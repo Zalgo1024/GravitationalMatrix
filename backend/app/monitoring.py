@@ -208,6 +208,13 @@ async def _scheduler() -> None:
             await asyncio.to_thread(run_due_monitors)
         except Exception:  # noqa: BLE001
             logger.exception("持续追踪调度循环异常")
+        # S2 feed 采集挂钩（FEED_INTERVAL_MIN 节流；开关关闭时 feed_tick 直接跳过）
+        try:
+            from app.feed_collector import feed_tick
+
+            await asyncio.to_thread(feed_tick)
+        except Exception:  # noqa: BLE001
+            logger.exception("feed 采集调度异常")
 
 
 def start_monitor_scheduler() -> None:

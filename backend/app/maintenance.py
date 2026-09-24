@@ -76,7 +76,18 @@ def maybe_cleanup() -> int:
         return 0
     _last_cleanup_at = now
     try:
-        return cleanup_stale_exports()
+        removed = cleanup_stale_exports()
     except Exception:  # noqa: BLE001 — 维护失败绝不影响主流程
         logger.exception("[maintenance] 即时导出清理循环异常")
-        return 0
+        removed = 0
+    # S2 feed_items 保留期清理（默认 90 天；开关关闭时跳过，零回归）
+    if settings.feed_enabled:
+        try:
+            from app.db import SessionLocal
+            from app.feed_store import purge_expired
+
+            with SessionLocal() as db:
+                purge_expired(db)
+        except Exception:  # noqa: BLE001
+            logger.exception("[maintenance] feed_items 保留期清理异常")
+    return removed
