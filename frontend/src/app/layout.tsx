@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "./tokens.css"; // 设计 token 权威定义层（接管 :root 与 dark 变量），须在 globals.css 之后
 import { AuthProvider } from "@/lib/auth";
 
 export const metadata: Metadata = {

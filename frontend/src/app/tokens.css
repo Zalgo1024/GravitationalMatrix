@@ -1,0 +1,103 @@
+/*
+ * 引力矩阵 设计 Token（权威定义层）
+ * 来源：Ardot 画布 728171998817363（每日资讯/舆情地图/事件档案/分析件规范等 15 屏）
+ *       + globals.css 既有 oklch 语义系统。
+ *
+ * 分层约定：
+ * - --canvas/--surface/--ink/--accent/...：全局语义 token（亮/暗双主题，既有体系延续）；
+ * - --gm-*：画布视觉语言扩展 token（纸面印刷系 / 地图系），服务新页面（/today 等）；
+ * - --fs-* / --sp-* / --radius-*：字号、间距、圆角阶梯。
+ *
+ * 红线：本文件是唯一权威变量定义；globals.css 不再定义 :root 与 dark 变量块。
+ * 既有硬编码色值不做批量改写（零回归）。
+ */
+
+:root {
+  /* —— 全局语义（沿用既有 oklch 体系）—— */
+  --canvas: oklch(0.975 0.004 250);
+  --surface: oklch(0.995 0.002 250);
+  --surface-muted: oklch(0.955 0.008 250);
+  --ink: oklch(0.22 0.025 255);
+  --ink-muted: oklch(0.48 0.02 255);
+  --line: oklch(0.88 0.012 250);
+  --accent: oklch(0.48 0.13 245);
+  --accent-soft: oklch(0.94 0.035 245);
+  --signal: oklch(0.64 0.14 160);
+  --signal-soft: oklch(0.94 0.04 160);
+  --risk: oklch(0.62 0.18 25);
+  --risk-soft: oklch(0.95 0.035 25);
+  --evidence: oklch(0.68 0.13 85);
+  --evidence-soft: oklch(0.96 0.04 85);
+  --shadow: 0 10px 30px rgb(25 42 65 / 0.06);
+
+  /* —— 画布扩展：纸面印刷系（F-poster / 规范页视觉语言）—— */
+  --gm-paper: #f7f8fa;          /* 画布页面底色 */
+  --gm-paper-cream: #d8d2c4;    /* 米灰纸面 */
+  --gm-paper-light: #f6f6f4;    /* 浅纸底 */
+  --gm-ink-print: #7a7466;      /* 印刷灰墨 */
+  --gm-accent-print: #2e5fa3;   /* 印刷蓝 */
+  --gm-risk-print: #b34f43;     /* 图例负向红 */
+  --gm-cinnabar: #d14b3c;       /* 朱砂强调线 / 地图事件热区 */
+  --gm-hairline: #dde1e7;       /* 刊头灰细线 */
+
+  /* —— 画布扩展：地图系（服务化渲染 PNG 与 /map 页共用口径）—— */
+  --gm-map-cool: #2e6fd6;       /* 重点区域蓝 */
+  --gm-map-gov: #d9a521;        /* 机关金 */
+  --gm-map-muted: #c9d8ef;      /* 次级填色 */
+  --gm-map-default: #edf0f4;    /* 默认填色 */
+
+  /* —— 字号阶梯（globals.css 高频值收敛为 8 档）—— */
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-base: 13px;
+  --fs-md: 14px;
+  --fs-lg: 15px;
+  --fs-xl: 22px;
+  --fs-2xl: 26px;
+  --fs-3xl: 31px;
+
+  /* —— 间距阶梯 —— */
+  --sp-1: 4px;
+  --sp-2: 6px;
+  --sp-3: 8px;
+  --sp-4: 12px;
+  --sp-5: 16px;
+  --sp-6: 22px;
+  --sp-7: 30px;
+
+  /* —— 圆角阶梯 —— */
+  --radius-xs: 4px;
+  --radius-sm: 5px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-pill: 999px;
+}
+
+html[data-theme="dark"] {
+  --canvas: oklch(.17 .014 255);
+  --surface: oklch(.21 .016 255);
+  --surface-muted: oklch(.255 .018 255);
+  --ink: oklch(.92 .01 250);
+  --ink-muted: oklch(.69 .018 250);
+  --line: oklch(.33 .018 255);
+  --accent: oklch(.68 .12 235);
+  --accent-soft: oklch(.28 .055 240);
+  --signal-soft: oklch(.27 .05 160);
+  --risk-soft: oklch(.27 .05 25);
+  --evidence-soft: oklch(.29 .045 85);
+  color-scheme: dark;
+
+  /* —— 画布扩展暗色映射：纸面系反转，地图系保饱和降明度 —— */
+  --gm-paper: oklch(.19 .006 250);
+  --gm-paper-cream: oklch(.30 .015 85);
+  --gm-paper-light: oklch(.23 .006 250);
+  --gm-ink-print: oklch(.72 .02 85);
+  --gm-accent-print: oklch(.66 .11 250);
+  --gm-risk-print: oklch(.66 .13 25);
+  --gm-cinnabar: oklch(.63 .16 25);
+  --gm-hairline: oklch(.33 .015 250);
+  --gm-map-cool: oklch(.60 .14 255);
+  --gm-map-gov: oklch(.72 .13 85);
+  --gm-map-muted: oklch(.38 .05 255);
+  --gm-map-default: oklch(.27 .012 250);
+}

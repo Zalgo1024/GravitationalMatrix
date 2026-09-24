@@ -1,20 +1,8 @@
-:root {
-  --canvas: oklch(0.975 0.004 250);
-  --surface: oklch(0.995 0.002 250);
-  --surface-muted: oklch(0.955 0.008 250);
-  --ink: oklch(0.22 0.025 255);
-  --ink-muted: oklch(0.48 0.02 255);
-  --line: oklch(0.88 0.012 250);
-  --accent: oklch(0.48 0.13 245);
-  --accent-soft: oklch(0.94 0.035 245);
-  --signal: oklch(0.64 0.14 160);
-  --signal-soft: oklch(0.94 0.04 160);
-  --risk: oklch(0.62 0.18 25);
-  --risk-soft: oklch(0.95 0.035 25);
-  --evidence: oklch(0.68 0.13 85);
-  --evidence-soft: oklch(0.96 0.04 85);
-  --shadow: 0 10px 30px rgb(25 42 65 / 0.06);
-}
+/*
+ * 变量定义已迁至 tokens.css（权威层）：:root 全局语义 + html[data-theme="dark"] 暗色覆盖
+ * + 画布扩展 --gm-* / --fs-* / --sp-* / --radius-*。本文件只保留组件样式。
+ * 红线：请勿在此文件重新定义 CSS 变量。
+ */
 
 /* Browser-scoped BYOK connection. The key is entered once and never rendered back. */
 .settings-stack {
@@ -405,20 +393,7 @@ button:focus-visible { outline: 3px solid oklch(0.7 0.12 245 / 0.42); outline-of
 .route-state__spinner { width: 28px; height: 28px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: route-spin .8s linear infinite; }
 @keyframes route-spin { to { transform: rotate(360deg); } }
 
-html[data-theme="dark"] {
-  --canvas: oklch(.17 .014 255);
-  --surface: oklch(.21 .016 255);
-  --surface-muted: oklch(.255 .018 255);
-  --ink: oklch(.92 .01 250);
-  --ink-muted: oklch(.69 .018 250);
-  --line: oklch(.33 .018 255);
-  --accent: oklch(.68 .12 235);
-  --accent-soft: oklch(.28 .055 240);
-  --signal-soft: oklch(.27 .05 160);
-  --risk-soft: oklch(.27 .05 25);
-  --evidence-soft: oklch(.29 .045 85);
-  color-scheme: dark;
-}
+/* 暗色主题变量覆盖已迁至 tokens.css；此处只保留暗色下的组件级微调 */
 html[data-theme="dark"] .app-topbar { background: rgb(33 39 49 / .82); }
 html[data-theme="dark"] .editor-source textarea { background: oklch(.185 .014 255); }
 
