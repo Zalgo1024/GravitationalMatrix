@@ -69,6 +69,18 @@
 .map-figure .map-image { width: 100%; max-width: 1000px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--gm-map-default); }
 .map-figure figcaption { color: var(--ink-muted); font-size: var(--fs-xs); }
 
+/* ===== RelationGraph v3 ===== */
+.relation-v3 { display: grid; gap: 10px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); padding: 14px; }
+.relation-v3__head { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.relation-v3__head strong { font-size: var(--fs-md); color: var(--ink); margin-right: 8px; }
+.relation-v3__perspective { display: flex; gap: 8px; align-items: center; color: var(--ink-muted); font-size: var(--fs-xs); }
+.relation-v3__perspective select { border: 1px solid var(--line); border-radius: var(--radius-xs); background: var(--surface-muted); color: var(--ink); font: inherit; font-size: var(--fs-xs); padding: 4px 8px; }
+.relation-v3__footnote { margin: 0; color: var(--ink-muted); font-size: 10px; }
+.relation-v3__open { margin: 0; font-size: var(--fs-xs); }
+.relation-v3__open a { color: var(--accent); text-decoration: none; }
+.relation-v3__open span { color: var(--ink-muted); }
+.relation-v3 .graph-canvas { min-height: 320px; border: 1px solid var(--gm-hairline); border-radius: var(--radius-sm); }
+
 @media (max-width: 660px) {
   .today-card { grid-template-columns: 26px minmax(0, 1fr); }
   .today-card__actions { grid-column: 2; }

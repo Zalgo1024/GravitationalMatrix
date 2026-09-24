@@ -1,13 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useAppStore } from "@/lib/store";
 import { ResearchBenchmark } from "@/components/research-benchmark";
+import { RelationGraphV3 } from "@/components/relation-graph-v3";
+import { parseReportGraphs } from "@/lib/report-graph";
 
 export default function BenchmarkPageRoute() {
   const { state } = useAppStore();
   const doneTasks = state.tasks.filter((task) => task.status === "done");
   const [taskId, setTaskId] = useState(doneTasks[0]?.id ?? "");
+
+  // 增量式 v3 入口：从所选报告的 markdown 解析第一张 network 图（默认视图不变）
+  const networkDiagram = useMemo(() => {
+    if (!taskId) return null;
+    const report = state.reports.find((item) => item.taskId === taskId);
+    if (!report?.markdown) return null;
+    const { diagrams } = parseReportGraphs(report.markdown);
+    return diagrams.find((diagram) => diagram.viz === "network") ?? null;
+  }, [taskId, state.reports]);
 
   return (
     <div className="wb2-page benchmark-shell">
@@ -39,6 +50,9 @@ export default function BenchmarkPageRoute() {
             </select>
           </div>
           {taskId && <ResearchBenchmark taskId={taskId} />}
+          {networkDiagram && (
+            <RelationGraphV3 diagram={networkDiagram} />
+          )}
         </>
       )}
     </div>
